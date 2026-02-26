@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.vscode/
+environment.yml
+data.txt
