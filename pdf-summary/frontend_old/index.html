@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
@@ -22,8 +22,6 @@
       --accent-text: #ffffff;
       --success: #27ae60;
       --error: #e74c3c;
-      --warning: #f39c12;
-      --info: #3498db;
       --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.06);
     }
 
@@ -122,65 +120,18 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* 상태 메시지 스타일 개선 */
-    .status { 
-      margin-top: 16px; font-size: 0.88rem; padding: 12px 16px; 
-      border-radius: 4px; display: none; line-height: 1.4;
-    }
-    .status.error { 
-      display: block; background: #fdf2f2; color: var(--error); 
-      border: 1px solid #f5c6c6; 
-    }
-    .status.info { 
-      display: block; background: #eef4fb; color: var(--info); 
-      border: 1px solid #b8d4ed; 
-    }
-    .status.warning {
-      display: block; background: #fef9e7; color: var(--warning);
-      border: 1px solid #f7dc6f;
-    }
-
-    .status-details {
-      margin-top: 8px; font-size: 0.82rem; opacity: 0.8;
-      padding-top: 8px; border-top: 1px solid rgba(0, 0, 0, 0.2);
-    }
-
-    /* 처리 시간 표시 */
-    .timing-info {
-      display: flex; gap: 12px; font-size: 0.8rem; color: var(--text-muted);
-      font-family: 'JetBrains Mono', monospace; margin-top: 8px;
-    }
-    .timing-item { padding: 2px 6px; background: #f8f8f6; border-radius: 3px; }
+    .status { margin-top: 16px; font-size: 0.88rem; padding: 10px 14px; border-radius: 4px; display: none; }
+    .status.error { display: block; background: #fdf2f2; color: var(--error); border: 1px solid #f5c6c6; }
+    .status.info  { display: block; background: #eef4fb; color: #2471a3; border: 1px solid #b8d4ed; }
 
     .divider { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
 
     .result-section { margin-top: 28px; display: none; }
     .result-section.visible { display: block; }
 
-    .section-header { 
-      display: flex; justify-content: space-between; align-items: center; 
-      margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
-    }
+    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
     .section-title { font-size: 0.95rem; font-weight: 600; color: var(--text-primary); }
     .section-meta { font-size: 0.8rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
-    
-    .section-actions {
-      display: flex; gap: 8px; align-items: center;
-    }
-
-    /* 번역 버튼 */
-    .btn-translate {
-      height: 32px; padding: 0 14px;
-      background: var(--info);
-      color: #fff;
-      border: none; border-radius: 4px;
-      font-family: inherit; font-size: 0.82rem; font-weight: 500;
-      cursor: pointer; white-space: nowrap;
-      transition: background 0.15s, transform 0.1s;
-      display: flex; align-items: center; gap: 6px;
-    }
-    .btn-translate:hover:not(:disabled) { background: #2086c2; }
-    .btn-translate:disabled { opacity: 0.5; cursor: not-allowed; }
 
     /* 원문 박스 */
     .original-box {
@@ -215,25 +166,6 @@
       min-height: 120px;
     }
 
-    /* 번역 결과 박스 */
-    .translation-section {
-      margin-top: 20px; display: none;
-    }
-    .translation-section.visible { display: block; }
-
-    .translation-box {
-      background: #f0f8ff;
-      border: 1px solid #b8d4ed;
-      border-radius: 4px;
-      padding: 20px;
-      font-size: 0.89rem;
-      line-height: 1.7;
-      color: var(--text-primary);
-      white-space: pre-wrap;
-      word-break: break-word;
-      min-height: 120px;
-    }
-
     .result-actions { margin-top: 12px; display: flex; justify-content: flex-end; }
 
     .btn-download {
@@ -248,20 +180,12 @@
       display: flex; align-items: center; gap: 6px;
     }
     .btn-download:hover { background: var(--accent); color: #fff; }
-
-    .translate-spinner {
-      width: 12px; height: 12px;
-      border: 2px solid rgba(255,255,255,0.35);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-    }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="card">
-      <div class="card-title">PDF 요약 & 번역 도구 - 프로토타입</div>
+      <div class="card-title">PDF 요약 도구 - 프로토타입</div>
 
       <div class="upload-row">
         <label class="file-label" id="fileLabel">
@@ -270,7 +194,7 @@
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
             <polyline points="14 2 14 8 20 8"/>
           </svg>
-          <span class="file-name" id="fileName">파일 선택 - 선택된 파일 없음</span>
+          <span class="file-name" id="fileName">파일 선택  선택된 파일 없음</span>
         </label>
 
         <button class="btn-summarize" id="summarizeBtn" disabled>
@@ -294,52 +218,18 @@
         <!-- ① 원문 전체 -->
         <hr class="divider" />
         <div class="section-header">
-          <div>
-            <span class="section-title">📃 원문 전체</span>
-            <span class="section-meta" id="originalMeta"></span>
-          </div>
-          <div class="section-actions">
-            <button class="btn-translate" id="translateOriginalBtn">
-              <span id="translateOriginalText">🌐 영문 번역</span>
-              <div class="translate-spinner" id="translateOriginalSpinner" style="display:none;"></div>
-            </button>
-          </div>
+          <span class="section-title">📃 원문 전체</span>
+          <span class="section-meta" id="originalMeta"></span>
         </div>
         <div class="original-box" id="originalBox"></div>
-        
-        <!-- 원문 번역 결과 -->
-        <div class="translation-section" id="originalTranslationSection">
-          <div class="section-header">
-            <span class="section-title">🌐 원문 영문 번역</span>
-            <span class="section-meta" id="originalTranslationMeta"></span>
-          </div>
-          <div class="translation-box" id="originalTranslationBox"></div>
-        </div>
 
         <!-- ② AI 요약 -->
         <hr class="divider" />
         <div class="section-header">
-          <div>
-            <span class="section-title">🤖 AI 요약 결과</span>
-            <span class="section-meta" id="summaryMeta"></span>
-          </div>
-          <div class="section-actions">
-            <button class="btn-translate" id="translateSummaryBtn">
-              <span id="translateSummaryText">🌐 영문 번역</span>
-              <div class="translate-spinner" id="translateSummarySpinner" style="display:none;"></div>
-            </button>
-          </div>
+          <span class="section-title">🤖 AI 요약 결과</span>
+          <span class="section-meta" id="summaryMeta"></span>
         </div>
         <div class="summary-box" id="summaryBox"></div>
-
-        <!-- 요약 번역 결과 -->
-        <div class="translation-section" id="summaryTranslationSection">
-          <div class="section-header">
-            <span class="section-title">🌐 요약 영문 번역</span>
-            <span class="section-meta" id="summaryTranslationMeta"></span>
-          </div>
-          <div class="translation-box" id="summaryTranslationBox"></div>
-        </div>
 
         <div class="result-actions">
           <button class="btn-download" id="downloadBtn">
@@ -358,7 +248,6 @@
   <script>
     const API_BASE = "http://localhost:8000/api";
 
-    // DOM 요소들
     const fileInput     = document.getElementById("fileInput");
     const fileLabel     = document.getElementById("fileLabel");
     const fileName      = document.getElementById("fileName");
@@ -374,42 +263,11 @@
     const downloadBtn   = document.getElementById("downloadBtn");
     const modelSelect   = document.getElementById("modelSelect");
 
-    // 번역 관련 요소들
-    const translateOriginalBtn = document.getElementById("translateOriginalBtn");
-    const translateOriginalText = document.getElementById("translateOriginalText");
-    const translateOriginalSpinner = document.getElementById("translateOriginalSpinner");
-    const originalTranslationSection = document.getElementById("originalTranslationSection");
-    const originalTranslationBox = document.getElementById("originalTranslationBox");
-    const originalTranslationMeta = document.getElementById("originalTranslationMeta");
-
-    const translateSummaryBtn = document.getElementById("translateSummaryBtn");
-    const translateSummaryText = document.getElementById("translateSummaryText");
-    const translateSummarySpinner = document.getElementById("translateSummarySpinner");
-    const summaryTranslationSection = document.getElementById("summaryTranslationSection");
-    const summaryTranslationBox = document.getElementById("summaryTranslationBox");
-    const summaryTranslationMeta = document.getElementById("summaryTranslationMeta");
-
     let currentSummary  = "";
-    let currentOriginalText = "";
     let currentFilename = "";
-    let currentDocumentId = null;  // 문서 ID 추가
 
-    // 파일 라벨 클릭 테스트
-    fileLabel.addEventListener("click", (event) => {
-      console.log("File label clicked", event);
-    });
-
-    // DOM 요소들이 제대로 로드되었는지 확인
-    console.log("DOM 요소들 확인:", {
-      fileInput: fileInput,
-      fileLabel: fileLabel, 
-      fileName: fileName
-    });
-
-    fileInput.addEventListener("change", (event) => {
-      console.log("File input changed", event);
+    fileInput.addEventListener("change", () => {
       const file = fileInput.files[0];
-      console.log("Selected file:", file);
       if (file) {
         currentFilename = file.name;
         fileName.textContent = file.name;
@@ -418,15 +276,6 @@
         summarizeBtn.disabled = false;
         hideStatus();
         resultSection.classList.remove("visible");
-        
-        console.log("File name set to:", file.name);
-        
-        // 번역 섹션들 숨기기
-        originalTranslationSection.classList.remove("visible");
-        summaryTranslationSection.classList.remove("visible");
-        
-        // 문서 ID 초기화
-        currentDocumentId = null;
       }
     });
 
@@ -455,8 +304,6 @@
       setLoading(true);
       hideStatus();
       resultSection.classList.remove("visible");
-      originalTranslationSection.classList.remove("visible");
-      summaryTranslationSection.classList.remove("visible");
 
       const formData = new FormData();
       formData.append("file", file);
@@ -467,109 +314,27 @@
         const data = await res.json();
 
         if (!res.ok) {
-          const errorMsg = data.detail || "요약 중 오류가 발생했습니다.";
-          showStatus("error", errorMsg);
+          showStatus("error", data.detail || "요약 중 오류가 발생했습니다.");
           return;
         }
 
         // ① 원문 표시
-        currentOriginalText = data.extracted_text;
-        currentDocumentId = data.id;  // 문서 ID 저장
         originalBox.textContent = data.extracted_text;
-        
-        // 개선된 메타데이터 표시
-        let metaText = `총 ${data.original_length.toLocaleString()}자`;
-        if (data.extraction_info) {
-          metaText += ` • ${data.extraction_info.successful_pages}/${data.extraction_info.total_pages} 페이지 추출 성공`;
-          if (data.extraction_info.file_size_mb) {
-            metaText += ` • ${data.extraction_info.file_size_mb}`;
-          }
-        }
-        originalMeta.textContent = metaText;
+        originalMeta.textContent = `총 ${data.original_length.toLocaleString()}자`;
 
         // ② AI 요약 표시
         currentSummary = data.summary;
         summaryBox.textContent = data.summary;
         summaryMeta.textContent = data.model_used;
 
-        // ③ 처리 시간 정보 표시
-        if (data.timing) {
-          showStatus("info", "처리가 완료되었습니다.", buildTimingInfo(data.timing));
-        }
-
         resultSection.classList.add("visible");
 
       } catch (err) {
-        showStatus("error", "서버에 연결할 수 없습니다.", "백엔드가 실행 중인지 확인해주세요. (localhost:8000)");
+        showStatus("error", "서버에 연결할 수 없습니다. 백엔드가 실행 중인지 확인해주세요. (localhost:8000)");
       } finally {
         setLoading(false);
       }
     });
-
-    // 원문 번역
-    translateOriginalBtn.addEventListener("click", async () => {
-      if (!currentOriginalText || !currentDocumentId) return;
-      await translateText(currentDocumentId, "original");
-    });
-
-    // 요약 번역
-    translateSummaryBtn.addEventListener("click", async () => {
-      if (!currentSummary || !currentDocumentId) return;
-      await translateText(currentDocumentId, "summary");
-    });
-
-    async function translateText(documentId, textType) {
-      const isOriginal = textType === "original";
-      const btn = isOriginal ? translateOriginalBtn : translateSummaryBtn;
-      const textSpan = isOriginal ? translateOriginalText : translateSummaryText;
-      const spinner = isOriginal ? translateOriginalSpinner : translateSummarySpinner;
-      const translationSection = isOriginal ? originalTranslationSection : summaryTranslationSection;
-      const translationBox = isOriginal ? originalTranslationBox : summaryTranslationBox;
-      const translationMeta = isOriginal ? originalTranslationMeta : summaryTranslationMeta;
-
-      // 로딩 상태 설정
-      btn.disabled = true;
-      textSpan.style.display = "none";
-      spinner.style.display = "block";
-
-      const formData = new FormData();
-      formData.append("document_id", documentId);
-      formData.append("text_type", textType);
-      formData.append("model", modelSelect.value);
-
-      try {
-        const res = await fetch(`${API_BASE}/translate`, { method: "POST", body: formData });
-        const data = await res.json();
-
-        if (!res.ok) {
-          const errorMsg = data.detail || "번역 중 오류가 발생했습니다.";
-          showStatus("error", errorMsg);
-          return;
-        }
-
-        // 번역 결과 표시
-        translationBox.textContent = data.translated_text;
-        
-        let metaText = `${data.model_used} • ${data.processing_time} • ${data.translated_length.toLocaleString()}자`;
-        if (data.from_cache) {
-          metaText += " • 캐시됨";
-        }
-        translationMeta.textContent = metaText;
-        translationSection.classList.add("visible");
-
-        // 성공 메시지
-        let successMsg = data.from_cache ? "캐시된 번역 결과를 불러왔습니다." : "번역이 완료되고 저장되었습니다.";
-        showStatus("info", successMsg, `처리 시간: ${data.processing_time}`);
-
-      } catch (err) {
-        showStatus("error", "서버에 연결할 수 없습니다.", "백엔드가 실행 중인지 확인해주세요. (localhost:8000)");
-      } finally {
-        // 로딩 상태 해제
-        btn.disabled = false;
-        textSpan.style.display = "inline";
-        spinner.style.display = "none";
-      }
-    }
 
     downloadBtn.addEventListener("click", async () => {
       if (!currentSummary) return;
@@ -606,50 +371,17 @@
       else hideStatus();
     }
 
-    function showStatus(type, msg, details = "") {
+    function showStatus(type, msg) {
       statusMsg.className = `status ${type}`;
-      statusMsg.innerHTML = msg;
-      
-      if (details) {
-        statusMsg.innerHTML += `<div class="status-details">${details}</div>`;
-      }
+      statusMsg.textContent = msg;
     }
 
     function hideStatus() {
       statusMsg.className = "status";
-      statusMsg.innerHTML = "";
-    }
-
-    function buildErrorDetails(errorDetail) {
-      let details = "";
-      if (errorDetail.reason) {
-        details += `<strong>원인:</strong> ${errorDetail.reason}<br>`;
-      }
-      if (errorDetail.suggestion) {
-        details += `<strong>해결방법:</strong> ${errorDetail.suggestion}`;
-      }
-      if (errorDetail.processing_time) {
-        details += `<br><strong>처리 시간:</strong> ${errorDetail.processing_time}`;
-      }
-      return details;
-    }
-    
-
-    function buildTimingInfo(timing) {
-      return `
-        <div class="timing-info">
-          <div class="timing-item">추출: ${timing.extraction_time}</div>
-          <div class="timing-item">요약: ${timing.summary_time}</div>
-          <div class="timing-item">전체: ${timing.total_time}</div>
-        </div>
-      `;
+      statusMsg.textContent = "";
     }
 
     loadModels();
   </script>
 </body>
 </html>
-=======
-  <head>
-    <meta charset="UTF-8" />
-
