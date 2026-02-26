@@ -27,12 +27,15 @@ class PdfDocument(Base):
 
     id             = Column(Integer, primary_key=True, index=True)
     filename       = Column(String(255), nullable=False)
-    extracted_text = Column(LONGTEXT)
-    summary        = Column(LONGTEXT)
+    extracted_text = Column(Text)  # LONGTEXT 대신 일반 Text나 대소문자 확인
+    summary        = Column(Text)
     model_used     = Column(String(100))
     char_count     = Column(Integer, default=0)
     created_at     = Column(DateTime, default=datetime.datetime.now)
 
+    # ⚠️ 이 부분들이 없어서 에러가 났던 것입니다. 추가해 주세요!
+    file_size_bytes         = Column(Integer) 
+    extraction_time_seconds = Column(Numeric(10, 3))
 
 # ── DB 세션 의존성 ──
 def get_db():

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Summary - 회원가입</title>
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --success-color: #28a745;
+            --bg-color: #f4f7f6;
+        }
+
+        body {
+            font-family: 'Pretendard', -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .register-container {
+            background-color: #fff;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 450px;
+            margin: 20px;
+        }
+
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        p.subtitle {
+            text-align: center;
+            color: #777;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 18px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-sizing: border-box;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        /* 중복확인 버튼 등 작은 버튼 */
+        .btn-small {
+            width: 120px;
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .btn-submit {
+            width: 100%;
+            padding: 14px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: background-color 0.3s;
+        }
+
+        .btn-submit:hover {
+            background-color: #357abd;
+        }
+
+        .footer-links {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 14px;
+            color: #888;
+        }
+
+        .footer-links a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="register-container">
+    <h2>회원가입</h2>
+    <p class="subtitle">PDF Summary 서비스 이용을 위해 가입해주세요.</p>
+
+    <form action="/auth/register" method="POST" id="registerForm">
+        <div class="form-group">
+            <label for="user_id">아이디</label>
+            <div class="input-group">
+                <input type="text" id="user_id" name="user_id" placeholder="아이디 입력" required>
+                <button type="button" class="btn-small">중복확인</button>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="user_pw">비밀번호</label>
+            <input type="password" id="user_pw" name="user_pw" placeholder="8자 이상 입력" required>
+        </div>
+
+        <div class="form-group">
+            <label for="user_pw_confirm">비밀번호 확인</label>
+            <input type="password" id="user_pw_confirm" placeholder="비밀번호 다시 입력" required>
+        </div>
+
+        <div class="form-group">
+            <label for="user_name">이름</label>
+            <input type="text" id="user_name" name="user_name" placeholder="실명을 입력하세요" required>
+        </div>
+
+        <div class="form-group">
+            <label for="user_email">이메일</label>
+            <input type="email" id="user_id" name="user_email" placeholder="example@email.com">
+        </div>
+
+        <button type="submit" class="btn-submit">가입 완료</button>
+    </form>
+
+    <div class="footer-links">
+        이미 계정이 있으신가요? <a href="login.html">로그인 페이지로</a>
+    </div>
+</div>
+
+<script>
+    // 간단한 비밀번호 일치 확인 스크립트
+    document.getElementById('registerForm').onsubmit = function() {
+        const pw = document.getElementById('user_pw').value;
+        const pwConfirm = document.getElementById('user_pw_confirm').value;
+
+        if (pw !== pwConfirm) {
+            alert("비밀번호가 일치하지 않습니다.");
+            return false;
+        }
+        return true;
+    };
+</script>
+
+</body>
+</html>
