@@ -5,7 +5,7 @@ from sqlalchemy import text
 from urllib.parse import quote
 from services.pdf_service import extract_text_from_pdf
 from services.ai_service import summarize_text, get_available_models, translate_to_english
-from database import get_db, PdfDocument
+from database import get_db, PdfDocument, get_user_documents, can_user_access_document
 import datetime
 import time
 
@@ -15,6 +15,7 @@ router = APIRouter()
 @router.post("/summarize")
 async def summarize_pdf(
     file: UploadFile = File(...),
+    user_id: int = Form(...),  # 사용자 ID 추가
     model: str = Form(default="gemma3:latest"),
     db: Session = Depends(get_db),
 ):
@@ -40,6 +41,7 @@ async def summarize_pdf(
 
     # 4. DB 저장 (확장된 필드 포함)
     doc = PdfDocument(
+        user_id=user_id,  # user_id 필드 추가
         filename=file.filename,
         extracted_text=extracted_text,
         summary=summary,
@@ -82,6 +84,7 @@ async def summarize_pdf(
 @router.post("/translate")
 async def translate_text(
     document_id: int = Form(...),
+    user_id: int = Form(...),  # 사용자 ID 추가
     text_type: str = Form(...),  # "original" 또는 "summary"
     model: str = Form(default="gemma3:latest"),
     db: Session = Depends(get_db),
@@ -90,6 +93,10 @@ async def translate_text(
     문서의 원문 또는 요약을 영어로 번역하고 DB에 저장합니다.
     """
     start_time = time.time()
+    
+    # 사용자 권한 확인
+    if not can_user_access_document(db, user_id, document_id):
+        raise HTTPException(status_code=403, detail="이 문서에 접근할 권한이 없습니다.")
     
     # 문서 조회
     doc = db.query(PdfDocument).filter(PdfDocument.id == document_id).first()
@@ -169,11 +176,16 @@ async def translate_text(
 @router.get("/document/{document_id}")
 async def get_document(
     document_id: int,
+    user_id: int = Form(...),  # 사용자 ID 추가
     db: Session = Depends(get_db),
 ):
     """
     문서 ID로 전체 정보(원문, 요약, 번역 포함) 조회
     """
+    # 사용자 권한 확인
+    if not can_user_access_document(db, user_id, document_id):
+        raise HTTPException(status_code=403, detail="이 문서에 접근할 권한이 없습니다.")
+    
     doc = db.query(PdfDocument).filter(PdfDocument.id == document_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
@@ -195,6 +207,35 @@ async def get_document(
         "summary_time_seconds": float(doc.summary_time_seconds) if doc.summary_time_seconds else None,
         "translation_time_seconds": float(doc.translation_time_seconds) if doc.translation_time_seconds else None,
         "created_at": doc.created_at.isoformat() if doc.created_at else None,
+    }
+
+
+@router.get("/documents/{user_id}")
+async def get_user_documents(
+    user_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    사용자별 문서 목록 조회
+    """
+    documents = get_user_documents(db, user_id)
+    
+    return {
+        "documents": [
+            {
+                "id": doc.id,
+                "filename": doc.filename,
+                "model_used": doc.model_used,
+                "char_count": doc.char_count,
+                "file_size_bytes": doc.file_size_bytes,
+                "total_pages": doc.total_pages,
+                "successful_pages": doc.successful_pages,
+                "has_original_translation": bool(doc.original_translation),
+                "has_summary_translation": bool(doc.summary_translation),
+                "created_at": doc.created_at.isoformat() if doc.created_at else None,
+            } for doc in documents
+        ],
+        "total_count": len(documents)
     }
 
 

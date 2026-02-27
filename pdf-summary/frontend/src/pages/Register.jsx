@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import './Register.css';
 
-const Register = () => {
+const Register = ({ setIsLoggedIn }) => {
     const [formData, setFormData] = useState({
         user_id: '',
         user_pw: '',

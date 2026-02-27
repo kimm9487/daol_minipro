@@ -9,42 +9,26 @@ from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.sql import func
 
 # database.py에서 설정한 Base, engine, get_db를 가져와 설정을 통일합니다.
-from database import Base, engine, get_db
+from database import Base, engine, get_db, User, UserSession
+from routers.summary import router as summary_router
 
 # --- 1. DB 모델 정의 ---
-# 회원 정보 테이블
-class User(Base):
-    __tablename__ = "user"  # 아까 CMD에서 확인한 테이블명과 일치시킵니다.
-    __table_args__ = {'extend_existing': True}    
-    # 만약 DESC user; 했을 때 컬럼명이 user_no가 아니라 id라면 아래를 id로 바꿔주세요.
-    user_no = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(String(50), unique=True, nullable=False)
-    user_pw = Column(String(255), nullable=False)
-    user_name = Column(String(50), nullable=False)
-    user_email = Column(String(100))
+# User 모델은 database.py에서 가져옴
+# SummaryHistory 대신 database.py의 PdfDocument를 사용
 
-# 요약 히스토리 테이블 (마이페이지용)
-class SummaryHistory(Base):
-    __tablename__ = "summary_history"
-    __table_args__ = {'extend_existing': True}
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(String(50), ForeignKey("user.user_id"), nullable=False)
-    file_name = Column(String(255), nullable=False)
-    model_used = Column(String(50))
-    summary_text = Column(String(2000))
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-# 서버 시작 시 테이블 자동 생성
-Base.metadata.create_all(bind=engine)
+# 서버 시작 시 테이블 자동 생성 (기존 테이블 구조 유지)
+# Base.metadata.create_all(bind=engine)  # database.py에서 처리됨
 
 # --- 2. FastAPI 앱 설정 ---
 app = FastAPI(title="PDF 요약 시스템 API")
 
-# React 개발 서버(5173)와의 통신을 위한 CORS 설정
+# summary 라우터 등록
+app.include_router(summary_router, prefix="/api", tags=["summary"])
+
+# React 개발 서버(5173)와 frontend_old(5500)와의 통신을 위한 CORS 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5500", "http://localhost:5500"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -60,6 +44,19 @@ def hash_password(password: str) -> str:
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
 
+# 현재 사용자 확인 의존성 (간단한 버전)
+def get_current_user(user_id: str = Form(...), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.username == user_id).first()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="사용자가 존재하지 않습니다.")
+    return user
+
+# 토큰 기반 인증 (헤더에서 user_id 추출)
+def get_current_user_id(user_id: str = Form(...)) -> str:
+    if not user_id:
+        raise HTTPException(status_code=401, detail="사용자 ID가 필요합니다.")
+    return user_id
+
 # --- 4. API 엔드포인트 ---
 
 # [회원가입]
@@ -71,15 +68,15 @@ def register(
     user_email: str = Form(None),
     db: Session = Depends(get_db)
 ):
-    existing = db.query(User).filter(User.user_id == user_id).first()
+    existing = db.query(User).filter(User.username == user_id).first()
     if existing:
         raise HTTPException(status_code=400, detail="이미 사용 중인 아이디입니다.")
     
     new_user = User(
-        user_id=user_id, 
-        user_pw=hash_password(user_pw), 
-        user_name=user_name, 
-        user_email=user_email
+        username=user_id, 
+        password_hash=hash_password(user_pw), 
+        full_name=user_name, 
+        email=user_email
     )
     db.add(new_user)
     db.commit()
@@ -88,20 +85,21 @@ def register(
 # [로그인]
 @app.post("/auth/login")
 def login(user_id: str = Form(...), user_pw: str = Form(...), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.user_id == user_id).first()
-    if not user or not verify_password(user_pw, user.user_pw):
+    user = db.query(User).filter(User.username == user_id).first()
+    if not user or not verify_password(user_pw, user.password_hash):
         raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 틀렸습니다.")
     
     return {
         "message": "로그인 성공",
-        "user_name": user.user_name,
-        "user_id": user.user_id
+        "user_name": user.full_name,
+        "user_id": user.username,
+        "user_db_id": user.id  # DB에서 사용할 실제 ID 추가
     }
 
 # [아이디 중복 확인]
 @app.get("/auth/check-id")
 def check_id(user_id: str, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.user_id == user_id).first()
+    user = db.query(User).filter(User.username == user_id).first()
     
     if user:
         # 아이디가 이미 있을 때
@@ -116,25 +114,24 @@ def check_id(user_id: str, db: Session = Depends(get_db)):
         "message": "사용 가능한 아이디입니다."
     }
 
-# [AI 모델 목록 조회]
-@app.get("/api/models")
-def get_models():
-    return {"models": ["gemma3:latest", "llama3:latest"]}
+# [로그인 / 회원가입 관련 api는 위에 정의됨]
+# summary 라우터는 /api prefix로 등록됨: summarize, translate, models 등
 
 # [마이페이지 히스토리 조회]
-@app.get("/api/history/{user_id}")
-def get_summary_history(user_id: str, db: Session = Depends(get_db)):
-    history = db.query(SummaryHistory).filter(SummaryHistory.user_id == user_id)\
-                .order_by(SummaryHistory.created_at.desc()).all()
+@app.get("/api/history/{user_db_id}")
+def get_summary_history(user_db_id: int, db: Session = Depends(get_db)):
+    # database.py의 get_user_documents 함수 활용
+    from database import get_user_documents
+    documents = get_user_documents(db, user_db_id)
     
     return [
         {
-            "id": h.id,
-            "date": h.created_at.strftime("%Y-%m-%d"),
-            "fileName": h.file_name,
-            "model": h.model_used,
+            "id": doc.id,
+            "date": doc.created_at.strftime("%Y-%m-%d") if doc.created_at else "",
+            "fileName": doc.filename,
+            "model": doc.model_used,
             "status": "완료"
-        } for h in history
+        } for doc in documents
     ]
 
 # --- 관리자(Admin) 전용 데이터 API ---
