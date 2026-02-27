@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from urllib.parse import quote
 from services.pdf_service import extract_text_from_pdf
-from services.ai_service import summarize_text, get_available_models, translate_to_english
+from services.ai_service import summarize_text, get_available_models, translate_to_english, categorize_document
 from database import get_db, PdfDocument, get_user_documents, can_user_access_document
 import datetime
 import time
@@ -36,6 +36,11 @@ async def summarize_pdf(
     summary = await summarize_text(extracted_text, model=model)
     summary_time = time.time() - summary_start
 
+    # 2-1. 문서 분류
+    categorize_start = time.time()
+    category = await categorize_document(extracted_text, summary, model=model)
+    categorize_time = time.time() - categorize_start
+
     # 3. 파일 크기 계산
     file_size = len(await file.read())
     await file.seek(0)  # 파일 포인터 리셋
@@ -53,6 +58,7 @@ async def summarize_pdf(
         successful_pages=extraction_result["successful_pages"],
         extraction_time_seconds=round(extraction_time, 3),
         summary_time_seconds=round(summary_time, 3),
+        category=category,  # 분류된 카테고리 저장
     )
     db.add(doc)
     db.commit()
@@ -67,11 +73,13 @@ async def summarize_pdf(
         "extracted_text": extracted_text,
         "summary": summary,
         "model_used": model,
+        "category": category,  # 분류된 카테고리 응답
         "user_id": user_id,
         "created_at": datetime.datetime.now().isoformat(),
         "timing": {
             "extraction_time": f"{extraction_time:.2f}초",
-            "summary_time": f"{summary_time:.2f}초", 
+            "summary_time": f"{summary_time:.2f}초",
+            "categorize_time": f"{categorize_time:.2f}초",
             "total_time": f"{overall_time:.2f}초"
         },
         "extraction_info": {
