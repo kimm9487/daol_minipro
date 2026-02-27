@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDF 문서 요약 - 프로토타입</title>
+
+    <!-- [재훈]260226: XLSX 다운로드 기능 추가 - SheetJS CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <!-- Tabulator CDN (로드 실패 방지용 최신 안정 버전) -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/css/tabulator.min.css"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@6.3.0/dist/js/tabulator.min.js"></script>
+
+    <!-- [재훈] 로컬 파일 사용 시 주석 해제 (CDN 차단 대비) -->
+    <!--
+  <link href="./css/tabulator.min.css" rel="stylesheet">
+  <script src="./js/tabulator.min.js"></script>
+  -->
+
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap");
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #f5f5f0;
+        --surface: #ffffff;
+        --border: #d0cfc8;
+        --border-focus: #2c3e50;
+        --text-primary: #1a1a1a;
+        --text-secondary: #666;
+        --text-muted: #999;
+        --accent: #2c3e50;
+        --accent-hover: #1a252f;
+        --accent-text: #ffffff;
+        --success: #27ae60;
+        --error: #e74c3c;
+        --shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 0, 0, 0.06);
+      }
+
+      body {
+        font-family: "Noto Sans KR", sans-serif;
+        background: var(--bg);
+        color: var(--text-primary);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        padding: 60px 20px;
+      }
+
+      .container {
+        width: 100%;
+        max-width: 740px;
+      }
+
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 32px 36px;
+        box-shadow: var(--shadow);
+      }
+
+      .card-title {
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin-bottom: 22px;
+        letter-spacing: -0.5px;
+      }
+
+      .upload-row {
+        display: flex;
+        gap: 10px;
+        align-items: stretch;
+      }
+
+      .file-label {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 0 14px;
+        height: 48px;
+        cursor: pointer;
+        transition: border-color 0.15s;
+        background: #fafaf8;
+        user-select: none;
+      }
+      .file-label:hover {
+        border-color: var(--border-focus);
+      }
+      .file-label.has-file {
+        border-color: var(--success);
+        background: #f0faf4;
+      }
+      .file-label input[type="file"] {
+        display: none;
+      }
+
+      .file-icon {
+        width: 18px;
+        height: 18px;
+        margin-right: 10px;
+        flex-shrink: 0;
+        opacity: 0.45;
+      }
+
+      .file-name {
+        font-size: 0.92rem;
+        color: var(--text-muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .file-name.selected {
+        color: var(--text-primary);
+      }
+
+      .model-row {
+        margin-top: 12px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .model-label {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        white-space: nowrap;
+      }
+
+      .model-select {
+        flex: 1;
+        height: 36px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: #fafaf8;
+        font-family: inherit;
+        font-size: 0.88rem;
+        color: var(--text-primary);
+        padding: 0 10px;
+        cursor: pointer;
+        outline: none;
+        transition: border-color 0.15s;
+      }
+      .model-select:focus {
+        border-color: var(--border-focus);
+      }
+
+      .btn-summarize {
+        height: 48px;
+        padding: 0 24px;
+        background: var(--accent);
+        color: var(--accent-text);
+        border: none;
+        border-radius: 4px;
+        font-family: inherit;
+        font-size: 0.95rem;
+        font-weight: 500;
+        cursor: pointer;
+        white-space: nowrap;
+        transition:
+          background 0.15s,
+          transform 0.1s;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .btn-summarize:hover:not(:disabled) {
+        background: var(--accent-hover);
+      }
+      .btn-summarize:active:not(:disabled) {
+        transform: scale(0.98);
+      }
+      .btn-summarize:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .spinner {
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255, 255, 255, 0.35);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .status {
+        margin-top: 16px;
+        font-size: 0.88rem;
+        padding: 10px 14px;
+        border-radius: 4px;
+        display: none;
+      }
+      .status.error {
+        display: block;
+        background: #fdf2f2;
+        color: var(--error);
+        border: 1px solid #f5c6c6;
+      }
+      .status.info {
+        display: block;
+        background: #eef4fb;
+        color: #2471a3;
+        border: 1px solid #b8d4ed;
+      }
+
+      .divider {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 24px 0;
+      }
+
+      .result-section {
+        margin-top: 28px;
+        display: none;
+      }
+      .result-section.visible {
+        display: block;
+      }
+
+      .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .section-title {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+      .section-meta {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        font-family: "JetBrains Mono", monospace;
+      }
+
+      /* 원문 박스 */
+      .original-box {
+        background: #f8f8f6;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 20px;
+        font-size: 0.87rem;
+        font-family: "JetBrains Mono", monospace;
+        line-height: 1.8;
+        color: #444;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 500px;
+        overflow-y: auto;
+      }
+      .original-box::-webkit-scrollbar {
+        width: 6px;
+      }
+      .original-box::-webkit-scrollbar-track {
+        background: #f0f0ec;
+        border-radius: 3px;
+      }
+      .original-box::-webkit-scrollbar-thumb {
+        background: #ccc;
+        border-radius: 3px;
+      }
+
+      /* AI 요약 박스 */
+      .summary-box {
+        background: #fafaf8;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 20px;
+        font-size: 0.91rem;
+        line-height: 1.75;
+        color: var(--text-primary);
+        white-space: pre-wrap;
+        word-break: break-word;
+        min-height: 120px;
+      }
+
+      .result-actions {
+        margin-top: 12px;
+        display: flex;
+        justify-content: flex-end;
+      }
+
+      .btn-download {
+        height: 36px;
+        padding: 0 18px;
+        background: transparent;
+        color: var(--accent);
+        border: 1px solid var(--accent);
+        border-radius: 4px;
+        font-family: inherit;
+        font-size: 0.88rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          color 0.15s;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .btn-download:hover {
+        background: var(--accent);
+        color: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card">
+        <div class="card-title">PDF 요약 도구 - 프로토타입</div>
+
+        <div class="upload-row">
+          <label class="file-label" id="fileLabel">
+            <input type="file" id="fileInput" accept=".pdf" />
+            <svg
+              class="file-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+              />
+              <polyline points="14 2 14 8 20 8" />
+            </svg>
+            <span class="file-name" id="fileName"
+              >파일 선택 선택된 파일 없음</span
+            >
+          </label>
+
+          <button class="btn-summarize" id="summarizeBtn" disabled>
+            <span id="btnText">요약하기</span>
+            <div class="spinner" id="spinner" style="display: none"></div>
+          </button>
+        </div>
+
+        <div class="model-row">
+          <span class="model-label">AI 모델:</span>
+          <select class="model-select" id="modelSelect">
+            <option value="gemma3:latest">gemma3 (기본)</option>
+          </select>
+        </div>
+
+        <div class="status" id="statusMsg"></div>
+
+        <!-- 결과 영역 -->
+        <div class="result-section" id="resultSection">
+          <hr class="divider" />
+          <div class="section-header">
+            <span class="section-title">📃 원문 전체</span>
+            <span class="section-meta" id="originalMeta"></span>
+          </div>
+          <div class="original-box" id="originalBox"></div>
+
+          <hr class="divider" />
+          <div class="section-header">
+            <span class="section-title">🤖 AI 요약 결과</span>
+            <span class="section-meta" id="summaryMeta"></span>
+          </div>
+          <div class="summary-box" id="summaryBox"></div>
+
+          <div class="result-actions">
+            <button class="btn-download" id="downloadBtn">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              TXT 다운로드
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabulator용 컨테이너 -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <h2 class="text-2xl font-bold text-center text-gray-800 mb-8">
+        📋 문서 목록
+      </h2>
+
+      <div id="docLoading" class="text-center py-12 text-gray-600 text-lg">
+        문서 목록을 불러오는 중입니다...
+      </div>
+
+      <div id="docTable" class="hidden"></div>
+    </div>
+
+    <script>
+      const API_BASE = "http://localhost:8000/api";
+
+      const fileInput = document.getElementById("fileInput");
+      const fileLabel = document.getElementById("fileLabel");
+      const fileName = document.getElementById("fileName");
+      const summarizeBtn = document.getElementById("summarizeBtn");
+      const btnText = document.getElementById("btnText");
+      const spinner = document.getElementById("spinner");
+      const statusMsg = document.getElementById("statusMsg");
+      const resultSection = document.getElementById("resultSection");
+      const originalBox = document.getElementById("originalBox");
+      const originalMeta = document.getElementById("originalMeta");
+      const summaryBox = document.getElementById("summaryBox");
+      const summaryMeta = document.getElementById("summaryMeta");
+      const downloadBtn = document.getElementById("downloadBtn");
+      const modelSelect = document.getElementById("modelSelect");
+
+      let currentSummary = "";
+      let currentFilename = "";
+
+      fileInput.addEventListener("change", () => {
+        const file = fileInput.files[0];
+        if (file) {
+          currentFilename = file.name;
+          fileName.textContent = file.name;
+          fileName.classList.add("selected");
+          fileLabel.classList.add("has-file");
+          summarizeBtn.disabled = false;
+          hideStatus();
+          resultSection.classList.remove("visible");
+        }
+      });
+
+      async function loadModels() {
+        try {
+          const res = await fetch(`${API_BASE}/models`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.models && data.models.length > 0) {
+              modelSelect.innerHTML = "";
+              data.models.forEach((m) => {
+                const opt = document.createElement("option");
+                opt.value = m;
+                opt.textContent = m;
+                modelSelect.appendChild(opt);
+              });
+            }
+          }
+        } catch (_) {}
+      }
+
+      summarizeBtn.addEventListener("click", async () => {
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        setLoading(true);
+        hideStatus();
+        resultSection.classList.remove("visible");
+
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("model", modelSelect.value);
+
+        try {
+          const res = await fetch(`${API_BASE}/summarize`, {
+            method: "POST",
+            body: formData,
+          });
+          const data = await res.json();
+
+          if (!res.ok) {
+            showStatus("error", data.detail || "요약 중 오류가 발생했습니다.");
+            return;
+          }
+
+          originalBox.textContent = data.extracted_text;
+          originalMeta.textContent = `총 ${data.original_length.toLocaleString()}자`;
+
+          currentSummary = data.summary;
+          summaryBox.textContent = data.summary;
+          summaryMeta.textContent = data.model_used;
+
+          resultSection.classList.add("visible");
+        } catch (err) {
+          showStatus(
+            "error",
+            "서버에 연결할 수 없습니다. 백엔드가 실행 중인지 확인해주세요. (localhost:8000)",
+          );
+        } finally {
+          setLoading(false);
+        }
+      });
+
+      downloadBtn.addEventListener("click", async () => {
+        if (!currentSummary) return;
+        const formData = new FormData();
+        formData.append("summary", currentSummary);
+        formData.append("filename", currentFilename);
+        try {
+          const res = await fetch(`${API_BASE}/download`, {
+            method: "POST",
+            body: formData,
+          });
+          if (res.ok) {
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = currentFilename.replace(".pdf", "") + "_요약.txt";
+            a.click();
+            URL.revokeObjectURL(url);
+          }
+        } catch (_) {
+          const blob = new Blob([currentSummary], {
+            type: "text/plain;charset=utf-8",
+          });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = currentFilename.replace(".pdf", "") + "_요약.txt";
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+      });
+
+      function setLoading(loading) {
+        summarizeBtn.disabled = loading;
+        btnText.style.display = loading ? "none" : "inline";
+        spinner.style.display = loading ? "block" : "none";
+        if (loading)
+          showStatus("info", "AI가 문서를 분석 중입니다. 잠시 기다려주세요...");
+        else hideStatus();
+      }
+
+      function showStatus(type, msg) {
+        statusMsg.className = `status ${type}`;
+        statusMsg.textContent = msg;
+      }
+
+      function hideStatus() {
+        statusMsg.className = "status";
+        statusMsg.textContent = "";
+      }
+
+      loadModels();
+
+      // ────────────────────────────────────────────────
+      // [재훈] Tabulator 로드 확인 + 테이블 구현 (검색창/테이블 표시 문제 해결)
+      // ────────────────────────────────────────────────
+      async function loadDbDocuments() {
+        const loadingEl = document.getElementById("docLoading");
+        const tableEl = document.getElementById("docTable");
+
+        loadingEl.style.display = "block";
+        tableEl.classList.add("hidden");
+        tableEl.innerHTML = "";
+
+        console.log("Tabulator 로드 시도 중...");
+
+        if (typeof Tabulator === "undefined") {
+          console.error("Tabulator 라이브러리 로드 실패");
+          loadingEl.innerHTML =
+            '<div class="text-center py-12 text-red-600 text-xl">Tabulator 로드 실패<br>인터넷 연결 또는 CDN 차단 여부를 확인해주세요.</div>';
+          loadingEl.style.display = "block";
+          return;
+        }
+
+        console.log("Tabulator 로드 성공!");
+
+        try {
+          const response = await fetch("http://127.0.0.1:8000/api/documents");
+
+          if (!response.ok) {
+            throw new Error(`서버 응답 오류: ${response.status}`);
+          }
+
+          const docs = await response.json();
+          console.log("데이터 로드 완료, 문서 수:", docs.length);
+
+          loadingEl.style.display = "none";
+
+          if (docs.length === 0) {
+            tableEl.innerHTML =
+              '<div class="text-center py-12 text-gray-600 text-lg">아직 저장된 문서가 없습니다.</div>';
+            tableEl.classList.remove("hidden");
+            return;
+          }
+
+          // Tabulator 초기화
+          const table = new Tabulator("#docTable", {
+            data: docs,
+            layout: "fitColumns",
+            pagination: "local",
+            paginationSize: 15,
+            paginationSizeSelector: [10, 15, 25, 50, 100, true],
+            movableColumns: true,
+            resizableColumns: true,
+            selectable: 1,
+            rowClick: function (e, row) {
+              const data = row.getData();
+              alert(
+                `클릭된 문서 ID: ${data.id}\n파일명: ${data.filename}\n요약: ${data.summary.substring(0, 100)}...`,
+              );
+            },
+            // 컬럼 추가 조절
+            columns: [
+              {
+                title: "ID",
+                field: "id",
+                sorter: "number",
+                width: 80,
+                headerFilter: "input",
+                headerFilterPlaceholder: "ID 검색",
+              },
+              {
+                title: "파일명",
+                field: "filename",
+                sorter: "string",
+                headerFilter: "input",
+                headerFilterPlaceholder: "파일명 검색",
+              },
+              // {
+              //   title: "요약 (일부)",
+              //   field: "summary",
+              //   sorter: "string",
+              //   headerFilter: "input",
+              //   headerFilterPlaceholder: "요약 검색",
+              //   formatter: (cell) =>
+              //     cell.getValue()
+              //       ? cell.getValue().substring(0, 80) + "..."
+              //       : "-",
+              // },
+              // {
+              //   title: "모델",
+              //   field: "model_used",
+              //   sorter: "string",
+              //   headerFilter: "input",
+              //   headerFilterPlaceholder: "모델 검색",
+              //   hozAlign: "center",
+              // },
+              // {
+              //   title: "글자수",
+              //   field: "char_count",
+              //   sorter: "number",
+              //   hozAlign: "right",
+              //   headerFilter: "input",
+              //   headerFilterPlaceholder: "글자수 검색",
+              // },
+              {
+                title: "생성일",
+                field: "created_at",
+                sorter: "string",
+                headerFilter: "input",
+                headerFilterPlaceholder: "생성일 검색",
+              },
+              // {
+              //   title: "추출시간",
+              //   field: "extraction_time",
+              //   sorter: "string",
+              //   hozAlign: "right",
+              //   headerFilter: "input",
+              //   headerFilterPlaceholder: "추출시간 검색",
+              // },
+              // {
+              //   title: "요약시간",
+              //   field: "summary_time",
+              //   sorter: "string",
+              //   hozAlign: "right",
+              //   headerFilter: "input",
+              //   headerFilterPlaceholder: "요약시간 검색",
+              // },
+              // {
+              //   title: "파일크기",
+              //   field: "file_size_mb",
+              //   sorter: "string",
+              //   hozAlign: "right",
+              //   headerFilter: "input",
+              //   headerFilterPlaceholder: "파일크기 검색",
+              // },
+              // {
+              //   title: "페이지",
+              //   field: "pages",
+              //   sorter: "string",
+              //   hozAlign: "center",
+              //   headerFilter: "input",
+              //   headerFilterPlaceholder: "페이지 검색",
+              // },
+              // {
+              //   title: "번역시간",
+              //   field: "translation_time",
+              //   sorter: "string",
+              //   hozAlign: "right",
+              //   headerFilter: "input",
+              //   headerFilterPlaceholder: "번역시간 검색",
+              // },
+              // {
+              //   title: "번역 모델",
+              //   field: "translation_model",
+              //   sorter: "string",
+              //   headerFilter: "input",
+              //   headerFilterPlaceholder: "번역 모델 검색",
+              //   hozAlign: "center",
+              // },
+              // {
+              //   title: "원문 번역 (일부)",
+              //   field: "original_translation_preview",
+              //   sorter: "string",
+              //   headerFilter: "input",
+              //   headerFilterPlaceholder: "원문 번역 검색",
+              //   formatter: (cell) =>
+              //     cell.getValue()
+              //       ? cell.getValue().substring(0, 80) + "..."
+              //       : "-",
+              // },
+              // {
+              //   title: "영문 요약 (일부)",
+              //   field: "summary_translation_preview",
+              //   sorter: "string",
+              //   headerFilter: "input",
+              //   headerFilterPlaceholder: "영문 요약 검색",
+              //   formatter: (cell) =>
+              //     cell.getValue()
+              //       ? cell.getValue().substring(0, 80) + "..."
+              //       : "-",
+              // },
+              // {
+              //   title: "상태",
+              //   field: "status",
+              //   sorter: "string",
+              //   hozAlign: "center",
+              //   headerFilter: "input",
+              //   headerFilterPlaceholder: "상태 검색",
+              // },
+            ],
+            locale: true,
+            langs: {
+              "ko-kr": {
+                pagination: {
+                  first: "처음",
+                  first_title: "첫 페이지",
+                  last: "마지막",
+                  last_title: "마지막 페이지",
+                  prev: "이전",
+                  prev_title: "이전 페이지",
+                  next: "다음",
+                  next_title: "다음 페이지",
+                  all: "전체",
+                },
+                headerFilters: {
+                  title: "필터 입력...",
+                },
+              },
+            },
+          });
+
+          // [재훈] 강제 렌더링 및 표시 (검색창만 남는 문제 해결)
+          setTimeout(() => {
+            table.redraw(true);
+            tableEl.classList.remove("hidden");
+            // console.log("[재훈] Tabulator 테이블 강제 렌더링 완료");
+          }, 100); // 약간의 지연으로 DOM 완전 로드 보장
+        } catch (error) {
+          console.error("DB 문서 목록 로드 실패:", error);
+          tableEl.innerHTML =
+            '<div class="text-center py-12 text-red-600">데이터를 불러오지 못했습니다. 서버를 확인해주세요.</div>';
+          tableEl.classList.remove("hidden");
+          loadingEl.style.display = "none";
+        }
+      }
+
+      // 페이지 로드 시 자동 실행
+      window.addEventListener("load", () => {
+        loadModels();
+        loadDbDocuments();
+      });
+    </script>
+  </body>
+</html>
