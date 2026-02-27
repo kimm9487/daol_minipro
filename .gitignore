@@ -1,5 +1,11 @@
+# Python 캐시 및 빌드 파일
 __pycache__/
+*.py[cod]
 *.pyc
-.vscode/
-environment.yml
-data.txt
+*.pyo
+*.pyd
+
+# 가상환경
+venv/
+env/
+.venv/
