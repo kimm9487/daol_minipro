@@ -207,13 +207,31 @@ const MyPage = () => {
     }
   };
 
-  // ===== [수정] 문서 편집 함수 - 파일명, 원문, 요약 모두 수정 가능 =====
-  const handleEditSummary = (docId, currentSummary, currentFileName, currentExtractedText) => {
-    setEditingDocId(docId);
-    setEditingFileName(currentFileName || "");
-    setEditingExtractedText(currentExtractedText || "");
-    setEditingSummary(currentSummary || "");
-    setShowSummaryEditModal(true);
+  // ===== [수정] 문서 편집 함수 - DB에서 최신 데이터 조회 후 수정 =====
+  const handleEditSummary = async (docId) => {
+    try {
+      const userDbId = localStorage.getItem("userDbId");
+      
+      // ===== [추가] DB에서 최신 전체 데이터 조회 =====
+      const response = await fetch(
+        `http://localhost:8000/api/document/${docId}?user_id=${userDbId}`,
+        { method: "GET" }
+      );
+      
+      if (response.ok) {
+        const doc = await response.json();
+        setEditingDocId(docId);
+        setEditingFileName(doc.filename || "");
+        setEditingExtractedText(doc.extracted_text || "");
+        setEditingSummary(doc.summary || "");
+        setShowSummaryEditModal(true);
+      } else {
+        alert("문서 정보를 불러올 수 없습니다.");
+      }
+    } catch (error) {
+      console.error("문서 편집 로드 에러:", error);
+      alert("문서 정보를 불러올 수 없습니다.");
+    }
   };
 
   // ===== [수정] 문서 정보 저장 함수 - 파일명, 원문, 요약 모두 저장 =====
@@ -438,7 +456,7 @@ const MyPage = () => {
                         </button>
                         <button 
                           className="action-btn edit"
-                          onClick={() => handleEditSummary(item.id, item.summary, item.fileName, item.extracted_text)}
+                          onClick={() => handleEditSummary(item.id)}
                         >
                           편집
                         </button>
