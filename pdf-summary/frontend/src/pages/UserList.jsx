@@ -4,7 +4,8 @@ import "./UserList.css";
 
 const UserList = () => {
   const currentUser = localStorage.getItem("userName") || "정재훈";
-  const isAdmin = localStorage.getItem("userRole") === "admin"; // [정재훈] 2026-03-02 추가: 관리자 여부 판단
+  const isAdmin = localStorage.getItem("userRole") === "admin";   // ← 관리자 계정 권한
+
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -78,8 +79,10 @@ const UserList = () => {
     fetchData();
   }, []);
 
-  // [정재훈] 2026-03-02 추가: 체크박스 토글 함수 (관리자라면 전체 가능)
+  // [정재훈] 2026-03-02 추가: 체크박스 토글 함수 (현재 사용자 문서만 선택 가능)
   const handleCheckboxChange = (docId, username, fullName) => {
+    if (username !== currentUser && fullName !== currentUser) return;
+
     const numericId = Number(docId);
 
     // NaN이거나 유효하지 않으면 무시
@@ -87,19 +90,6 @@ const UserList = () => {
       console.warn("[정재훈] 유효하지 않은 docId:", docId);
       return;
     }
-
-    // 관리자라면 무조건 체크/해제 가능
-    if (isAdmin) {
-      setSelectedItems((prev) =>
-        prev.includes(numericId)
-          ? prev.filter((id) => id !== numericId)
-          : [...prev, numericId],
-      );
-      return;
-    }
-
-    // 일반 사용자: 본인 문서만 선택 가능
-    if (username !== currentUser && fullName !== currentUser) return;
 
     setSelectedItems((prev) =>
       prev.includes(numericId)
@@ -110,9 +100,6 @@ const UserList = () => {
 
   // [정재훈] 2026-03-02 최종 수정: Body에 user_id도 함께 보내기 (401 에러 완전 해결)
   const handleDownload = async () => {
-    // 개선 3: 다운로드 버튼 클릭 시 즉시 로그 (디버깅용)
-    console.log("📥 다운로드 버튼 클릭! 선택된 항목:", selectedItems);
-
     if (selectedItems.length === 0) {
       alert("다운로드할 항목을 선택하세요.");
       return;
@@ -123,6 +110,9 @@ const UserList = () => {
       .filter((id) => !isNaN(id) && id > 0);
 
     try {
+      // 여기서부터 실제 fetch + blob 다운로드 코드가 빠져 있거나 주석처리된 상태로 보임
+      // ↓↓↓ 이 부분이 없으면 버튼 눌러도 아무 일도 안 일어남 ↓↓↓
+
       let sendUserId = currentUser;
 
       const usernameRes = await fetch(
@@ -134,13 +124,10 @@ const UserList = () => {
         },
       );
 
-      // 개선 2: current-username 실패 시 더 명확한 로그
       if (usernameRes.ok) {
         const data = await usernameRes.json();
         sendUserId = data.username;
         console.log("[정재훈] 서버에서 조회한 실제 username:", sendUserId);
-      } else {
-        console.warn("⚠️ current-username 실패 → full_name 그대로 사용");
       }
 
       const response = await fetch(
@@ -160,47 +147,36 @@ const UserList = () => {
         throw new Error(`다운로드 실패: ${response.status} - ${errText}`);
       }
 
+      // ★★★★★ 여기부터 blob → 파일 다운로드 로직이 핵심 ★★★★★
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${sendUserId}_선택_요약목록.csv`;
+      a.download = `${sendUserId}_선택_요약목록.csv`; // 파일명
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-
-      // 개선 1: 다운로드 성공 시 알림 추가
-      console.log("✅ 다운로드 완료!");
-      alert(`${sendUserId}_선택_요약목록.csv 파일이 다운로드되었습니다!`);
     } catch (err) {
       console.error("다운로드 오류:", err);
       alert("다운로드 중 오류가 발생했습니다.\n" + err.message);
     }
   };
 
-  // 보기 버튼 클릭 시 (관리자라면 모든 문서 보기 가능)
-  const handleViewClick = (id) => {
-    const item = data.find((d) => d.id === id);
-    if (!item) {
-      alert("문서를 찾을 수 없습니다.");
+  const handleViewClick = (docId) => {
+    const doc = data.find((item) => item.id === docId);
+    if (!doc) {
+      alert("해당 문서를 찾을 수 없습니다.");
       return;
     }
 
-    // 관리자라면 무조건 볼 수 있게 함 (가장 중요한 부분)
-    if (isAdmin) {
-      setSelectedSummary(item.summary);
-      setIsModalOpen(true);
-      return;
-    }
-
-    // 일반 사용자: 본인 문서만
-    if (item.username === currentUser || item.fullName === currentUser) {
-      setSelectedSummary(item.summary);
-      setIsModalOpen(true);
-    } else {
+    if (doc.username !== currentUser && doc.fullName !== currentUser) {
       alert("이 문서는 당신이 작성한 것이 아닙니다.");
+      return;
     }
+
+    setSelectedSummary(doc.summary);
+    setIsModalOpen(true);
   };
 
   const closeModal = () => {
@@ -208,60 +184,88 @@ const UserList = () => {
     setSelectedSummary(null);
   };
 
-  // 정렬 요청
+  // [정재훈] 2026-03-02 추가: 컬럼 클릭 시 정렬 토글
   const requestSort = (key) => {
     let direction = "asc";
     if (sortConfig.key === key && sortConfig.direction === "asc") {
       direction = "desc";
     }
     setSortConfig({ key, direction });
+    setCurrentPage(1); // 정렬 시 페이지 초기화
   };
 
-  // 정렬된 데이터
-  const sortedData = React.useMemo(() => {
-    let sortable = [...data];
-    if (sortConfig.key) {
-      sortable.sort((a, b) => {
-        const aVal = a[sortConfig.key];
-        const bVal = b[sortConfig.key];
-        if (aVal < bVal) return sortConfig.direction === "asc" ? -1 : 1;
-        if (aVal > bVal) return sortConfig.direction === "asc" ? 1 : -1;
-        return 0;
-      });
-    }
-    return sortable;
-  }, [data, sortConfig]);
-
-  // 필터링
-  const filteredData = React.useMemo(() => {
-    return sortedData.filter((item) =>
-      [
-        item.filename,
-        item.fullName,
-        item.username,
-        item.model,
-        item.status,
-        item.charCount,
-        item.datetime,
-      ].some((val) =>
-        val?.toString().toLowerCase().includes(searchTerm.toLowerCase()),
-      ),
+  if (loading)
+    return (
+      <div style={{ padding: "40px", textAlign: "center" }}>
+        데이터 로딩 중...
+      </div>
     );
-  }, [sortedData, searchTerm]);
+  if (error)
+    return <div style={{ padding: "40px", color: "red" }}>오류: {error}</div>;
 
-  // 페이지네이션
-  const paginatedData = filteredData.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage,
+  let filteredData = data.filter(
+    (item) =>
+      item.filename.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.status.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.charCount.includes(searchTerm) ||
+      item.datetime.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
+  if (modelFilter !== "전체 모델") {
+    filteredData = filteredData.filter((item) => item.model === modelFilter);
+  }
+
+  if (sortOption === "최신순") {
+    filteredData.sort(
+      (a, b) => (b.sortDate || new Date(0)) - (a.sortDate || new Date(0)),
+    );
+  } else if (sortOption === "오래된순") {
+    filteredData.sort(
+      (a, b) => (a.sortDate || new Date(0)) - (b.sortDate || new Date(0)),
+    );
+  }
+
+  // [정재훈] 2026-03-02 추가: sortConfig에 따라 데이터 정렬
+  if (sortConfig.key) {
+    filteredData.sort((a, b) => {
+      const aValue = a[sortConfig.key];
+      const bValue = b[sortConfig.key];
+
+      // 날짜/시간은 Date 객체로 비교
+      if (sortConfig.key === "datetime") {
+        const dateA = new Date(a.sortDate || a.datetime);
+        const dateB = new Date(b.sortDate || b.datetime);
+        return sortConfig.direction === "asc" ? dateA - dateB : dateB - dateA;
+      }
+
+      // 숫자형 (원문자수 등)
+      if (typeof aValue === "number" && typeof bValue === "number") {
+        return sortConfig.direction === "asc"
+          ? aValue - bValue
+          : bValue - aValue;
+      }
+
+      // 문자열 기본 비교
+      const strA = String(aValue || "").toLowerCase();
+      const strB = String(bValue || "").toLowerCase();
+      return sortConfig.direction === "asc"
+        ? strA.localeCompare(strB)
+        : strB.localeCompare(strA);
+    });
+  }
+
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  const indexOfLast = currentPage * itemsPerPage;
+  const indexOfFirst = indexOfLast - itemsPerPage;
+  const currentItems = filteredData.slice(indexOfFirst, indexOfLast);
 
   const goToPage = (page) => {
     if (page >= 1 && page <= totalPages) setCurrentPage(page);
   };
 
-  // 검색어 하이라이트 함수
   const highlightText = (text, query) => {
     if (!query || !text) return text || "";
     const regex = new RegExp(
@@ -276,118 +280,177 @@ const UserList = () => {
       <div className="title-wrapper">
         <div className="title-bar"></div>
         <h2>04. 요약 목록 보기</h2>
-        {isAdmin && (
-          <span
-            style={{
-              marginLeft: "12px",
-              background: "#e11d48",
-              color: "white",
-              padding: "4px 12px",
-              borderRadius: "999px",
-              fontSize: "14px",
-              fontWeight: "bold",
-            }}
-          >
-            관리자 모드
-          </span>
-        )}
       </div>
 
       <div className="description-wrapper">
         <div className="description-box">
-          <span>
-            전체 사용자의 요약 이력을 조회할 수 있습니다. (본인 포함 전체 공개)
-          </span>
-        </div>
-
-        <button className="download-btn" onClick={handleDownload}>
-          목록 다운로드
-        </button>
-      </div>
-
-      {/* 관리자 전용 전체 선택/해제 버튼 */}
-      {isAdmin && (
-        <div style={{ margin: "12px 0", textAlign: "right" }}>
-          <button
-            className="download-btn"
-            style={{ background: "#6b7280" }}
-            onClick={() => {
-              if (selectedItems.length === data.length) {
-                setSelectedItems([]);
-              } else {
-                setSelectedItems(data.map((item) => item.id));
-              }
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              width: "100%",
+              gap: "16px",
+              flexWrap: "wrap",
             }}
           >
-            {selectedItems.length === data.length ? "전체 해제" : "전체 선택"}
-          </button>
-        </div>
-      )}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                flex: 1,
+              }}
+            >
+              <span className="blue-icon">📝</span>
+              <p style={{ margin: 0 }}>
+                전체 사용자의 요약 이력을 조회할 수 있습니다. (본인 포함 전체
+                공개)
+              </p>
+            </div>
 
-      {/* 검색/필터 바 */}
-      <div className="filter-bar">
-        <div className="search-group">
-          <span className="search-icon">🔍</span>
-          <input
-            type="text"
-            placeholder="파일명, 사용자, 모델 등 검색..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+            <button className="download-btn" onClick={handleDownload}>
+              <span className="download-icon">⬇</span> 목록 다운로드
+            </button>
+          </div>
         </div>
-        <select
-          value={sortOption}
-          onChange={(e) => setSortOption(e.target.value)}
-        >
-          <option value="최신순">최신순</option>
-          <option value="오래된순">오래된순</option>
-        </select>
-        <select
-          value={modelFilter}
-          onChange={(e) => setModelFilter(e.target.value)}
-        >
-          <option value="전체 모델">전체 모델</option>
-          <option value="gemma3:latest">gemma3:latest</option>
-        </select>
-        <button className="search-btn">검색</button>
       </div>
 
-      {/* 테이블 */}
+      <div className="filter-container">
+        <div className="filter-bar">
+          <div className="search-group">
+            <span className="search-icon">🔍</span>
+            <input
+              type="text"
+              placeholder="파일명, 사용자, 모델 등 검색..."
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
+          <select
+            value={sortOption}
+            onChange={(e) => {
+              setSortOption(e.target.value);
+              setCurrentPage(1);
+            }}
+          >
+            <option>최신순</option>
+            <option>오래된순</option>
+          </select>
+          <select
+            value={modelFilter}
+            onChange={(e) => {
+              setModelFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+          >
+            <option>전체 모델</option>
+            <option>gemma3:latest</option>
+            <option>llama3:latest</option>
+          </select>
+          <button className="search-btn">검색</button>
+        </div>
+      </div>
+
       <div className="table-wrapper">
         <table className="summary-table">
           <thead>
             <tr>
-              <th>선택</th>
+              <th style={{ width: "40px" }}>선택</th>
               <th>#</th>
-              <th onClick={() => requestSort("datetime")} className="sortable">
+
+              {/* [정재훈] 2026-03-02 추가: 정렬 버튼 */}
+              <th className="sortable" onClick={() => requestSort("datetime")}>
                 날짜 / 시간
                 <span
                   className={`sort-icon ${sortConfig.key === "datetime" ? sortConfig.direction : "none"}`}
                 >
                   {sortConfig.key === "datetime"
                     ? sortConfig.direction === "asc"
-                      ? "▲"
-                      : "▼"
-                    : "↕"}
+                      ? " ▲"
+                      : " ▼"
+                    : " ⇅"}
                 </span>
               </th>
-              <th>ID</th>
-              <th>사용자</th>
-              <th>파일명</th>
-              <th>AI 모델</th>
-              <th>원문자수</th>
+
+              <th className="sortable" onClick={() => requestSort("username")}>
+                ID
+                <span
+                  className={`sort-icon ${sortConfig.key === "username" ? sortConfig.direction : "none"}`}
+                >
+                  {sortConfig.key === "username"
+                    ? sortConfig.direction === "asc"
+                      ? " ▲"
+                      : " ▼"
+                    : " ⇅"}
+                </span>
+              </th>
+
+              <th className="sortable" onClick={() => requestSort("fullName")}>
+                사용자
+                <span
+                  className={`sort-icon ${sortConfig.key === "fullName" ? sortConfig.direction : "none"}`}
+                >
+                  {sortConfig.key === "fullName"
+                    ? sortConfig.direction === "asc"
+                      ? " ▲"
+                      : " ▼"
+                    : " ⇅"}
+                </span>
+              </th>
+
+              <th className="sortable" onClick={() => requestSort("filename")}>
+                파일명
+                <span
+                  className={`sort-icon ${sortConfig.key === "filename" ? sortConfig.direction : "none"}`}
+                >
+                  {sortConfig.key === "filename"
+                    ? sortConfig.direction === "asc"
+                      ? " ▲"
+                      : " ▼"
+                    : " ⇅"}
+                </span>
+              </th>
+
+              <th className="sortable" onClick={() => requestSort("model")}>
+                AI 모델
+                <span
+                  className={`sort-icon ${sortConfig.key === "model" ? sortConfig.direction : "none"}`}
+                >
+                  {sortConfig.key === "model"
+                    ? sortConfig.direction === "asc"
+                      ? " ▲"
+                      : " ▼"
+                    : " ⇅"}
+                </span>
+              </th>
+
+              <th className="sortable" onClick={() => requestSort("charCount")}>
+                원문자수
+                <span
+                  className={`sort-icon ${sortConfig.key === "charCount" ? sortConfig.direction : "none"}`}
+                >
+                  {sortConfig.key === "charCount"
+                    ? sortConfig.direction === "asc"
+                      ? " ▲"
+                      : " ▼"
+                    : " ⇅"}
+                </span>
+              </th>
+
               <th>상태</th>
               <th>보기</th>
             </tr>
           </thead>
           <tbody>
-            {paginatedData.map((item, idx) => (
+            {currentItems.map((item, index) => (
               <tr
                 key={item.id}
                 className={
-                  item.username === currentUser ||
-                  item.fullName === currentUser ||
-                  isAdmin
+                  item.username === currentUser || item.fullName === currentUser
                     ? "my-item"
                     : ""
                 }
@@ -395,7 +458,7 @@ const UserList = () => {
                 <td>
                   <input
                     type="checkbox"
-                    checked={selectedItems.includes(item.id)}
+                    checked={selectedItems.includes(Number(item.id))}
                     onChange={() =>
                       handleCheckboxChange(
                         item.id,
@@ -404,30 +467,50 @@ const UserList = () => {
                       )
                     }
                     disabled={
-                      !isAdmin &&
                       item.username !== currentUser &&
                       item.fullName !== currentUser
                     }
                   />
                 </td>
-                <td>{(currentPage - 1) * itemsPerPage + idx + 1}</td>
-                <td>{item.datetime}</td>
+                {/* 여기만 수정됨 → # 컬럼에 실제 문서 ID 표시 */}
                 <td>{item.id}</td>
-                <td className="user-cell" data-username={item.username}>
-                  {item.fullName}
-                </td>
+                <td
+                  dangerouslySetInnerHTML={{
+                    __html: highlightText(item.datetime, searchTerm),
+                  }}
+                />
+                <td
+                  dangerouslySetInnerHTML={{
+                    __html: highlightText(item.username, searchTerm),
+                  }}
+                />
+                <td
+                  className="user-cell"
+                  data-username={item.username}
+                  dangerouslySetInnerHTML={{
+                    __html: highlightText(item.fullName, searchTerm),
+                  }}
+                />
                 <td
                   dangerouslySetInnerHTML={{
                     __html: highlightText(item.filename, searchTerm),
                   }}
                 />
-                <td>{item.model}</td>
+                <td
+                  dangerouslySetInnerHTML={{
+                    __html: highlightText(item.model, searchTerm),
+                  }}
+                />
                 <td
                   dangerouslySetInnerHTML={{
                     __html: highlightText(item.charCount, searchTerm),
                   }}
                 />
-                <td>{item.status}</td>
+                <td
+                  dangerouslySetInnerHTML={{
+                    __html: highlightText(item.status, searchTerm),
+                  }}
+                />
                 <td>
                   <button
                     className="view-btn"
@@ -439,10 +522,10 @@ const UserList = () => {
               </tr>
             ))}
 
-            {/* 빈 행으로 테이블 높이 유지 */}
-            {Array.from({ length: itemsPerPage - paginatedData.length }).map(
+            {/* [정재훈] 2026-03-02 수정: hydration 에러 방지 - 빈 행 안전하게 생성 */}
+            {Array.from({ length: itemsPerPage - currentItems.length }).map(
               (_, i) => (
-                <tr key={`empty-${i}`} className="empty-row">
+                <tr key={`empty-row-${i}`} className="empty-row">
                   <td colSpan={10}>&nbsp;</td>
                 </tr>
               ),
@@ -451,20 +534,20 @@ const UserList = () => {
         </table>
       </div>
 
-      {/* 모달 */}
       {isModalOpen && selectedSummary && (
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <button className="modal-close" onClick={closeModal}>
               ×
             </button>
-            <h2>요약 내용</h2>
-            <pre className="modal-text">{selectedSummary}</pre>
+            <h2>내 요약 내용</h2>
+            <div className="modal-section">
+              <pre className="modal-text">{selectedSummary}</pre>
+            </div>
           </div>
         </div>
       )}
 
-      {/* 하단 바 */}
       <div className="list-bottom-bar">
         <div className="pagination-left">
           <div className="my-summary-indicator">
@@ -520,7 +603,6 @@ const UserList = () => {
         </div>
       </div>
 
-      {/* 하단 설명 그리드 */}
       <div className="bottom-notes-grid">
         <div className="note-box">
           <div className="note-title">
