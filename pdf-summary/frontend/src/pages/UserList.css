@@ -378,3 +378,64 @@ h2 {
   font-size: 13px;
   color: #555;
 }
+
+/* [재훈] 2026-03-01 추가: 요약 내용 전용 간단 모달 스타일 */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  width: 85%;
+  max-width: 800px;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 28px;
+  position: relative;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+}
+
+.modal-close {
+  position: absolute;
+  top: 16px;
+  right: 24px;
+  background: none;
+  border: none;
+  font-size: 32px;
+  cursor: pointer;
+  color: #888;
+}
+
+.modal-close:hover {
+  color: #333;
+}
+
+.modal-text {
+  background: #f9fafb;
+  padding: 20px;
+  border-radius: 10px;
+  white-space: pre-wrap;
+  font-size: 15px;
+  line-height: 1.8;
+  border: 1px solid #e5e7eb;
+}
+
+/* [재훈] 2026-03-01 대안: 정말 얇고 미니멀한 하이라이트 */
+.highlight {
+  background-color: rgba(59, 130, 246, 0.15);  /* 투명도 낮춘 파랑 */
+  border-bottom: 2px solid #3b82f6;            /* 밑줄 스타일 (가장 얇음) */
+  padding-bottom: 1px;
+  transition: all 0.2s ease;
+}
+
+.highlight:hover {
+  background-color: rgba(59, 130, 246, 0.25);
+  border-bottom-color: #2563eb;
+}

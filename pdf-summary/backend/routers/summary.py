@@ -1,6 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from fastapi.responses import Response
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload  # [재훈] 2026-03-01 추가: joinedload 임포트
 from sqlalchemy import text
 from urllib.parse import quote
 from services.pdf_service import extract_text_from_pdf
@@ -11,7 +11,6 @@ import time
 
 router = APIRouter()
 
-
 @router.post("/summarize")
 async def summarize_pdf(
     file: UploadFile = File(...),
@@ -20,7 +19,7 @@ async def summarize_pdf(
     db: Session = Depends(get_db),
 ):
     overall_start = time.time()
-    
+   
     # 1. PDF 텍스트 추출
     extraction_start = time.time()
     try:
@@ -47,21 +46,11 @@ async def summarize_pdf(
         summary=summary,
         model_used=model,
         char_count=len(extracted_text),
-
-    # [재훈] 2026-02-26
-    # 컬럼 추가
-        # extraction_time_seconds=extraction_time_seconds,
-        # summary_time_seconds=summary_time_seconds,
-        # file_size_bytes=file_size_bytes,
-        # total_pages=total_pages,
-        # successful_pages=successful_pages,
-
         file_size_bytes=file_size,
         total_pages=extraction_result["total_pages"],
         successful_pages=extraction_result["successful_pages"],
         extraction_time_seconds=round(extraction_time, 3),
         summary_time_seconds=round(summary_time, 3),
-
     )
     db.add(doc)
     db.commit()
@@ -77,10 +66,9 @@ async def summarize_pdf(
         "summary": summary,
         "model_used": model,
         "created_at": datetime.datetime.now().isoformat(),
-
         "timing": {
             "extraction_time": f"{extraction_time:.2f}초",
-            "summary_time": f"{summary_time:.2f}초", 
+            "summary_time": f"{summary_time:.2f}초",
             "total_time": f"{overall_time:.2f}초"
         },
         "extraction_info": {
@@ -90,7 +78,6 @@ async def summarize_pdf(
             "file_size_mb": f"{file_size / (1024*1024):.2f}MB"
         }
     }
-
 
 @router.post("/translate")
 async def translate_text(
@@ -104,30 +91,30 @@ async def translate_text(
     문서의 원문 또는 요약을 영어로 번역하고 DB에 저장합니다.
     """
     start_time = time.time()
-    
+   
     # 사용자 권한 확인
     if not can_user_access_document(db, user_id, document_id):
         raise HTTPException(status_code=403, detail="이 문서에 접근할 권한이 없습니다.")
-    
+   
     # 문서 조회
     doc = db.query(PdfDocument).filter(PdfDocument.id == document_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
-    
+   
     # 번역할 텍스트 결정
     if text_type == "original":
         if not doc.extracted_text:
             raise HTTPException(status_code=400, detail="원문이 없습니다.")
         text_to_translate = doc.extracted_text
         existing_translation = doc.original_translation
-    elif text_type == "summary": 
+    elif text_type == "summary":
         if not doc.summary:
             raise HTTPException(status_code=400, detail="요약이 없습니다.")
         text_to_translate = doc.summary
         existing_translation = doc.summary_translation
     else:
         raise HTTPException(status_code=400, detail="text_type은 'original' 또는 'summary'여야 합니다.")
-    
+   
     # 이미 번역이 있고 같은 모델인 경우 기존 결과 반환
     if existing_translation and doc.translation_model == model:
         processing_time = time.time() - start_time
@@ -142,24 +129,24 @@ async def translate_text(
             "original_length": len(text_to_translate),
             "translated_length": len(existing_translation)
         }
-    
+   
     try:
         # 새로 번역
         translated = await translate_to_english(text_to_translate, model)
         processing_time = time.time() - start_time
-        
+       
         # DB 업데이트
         if text_type == "original":
             doc.original_translation = translated
         else:  # summary
             doc.summary_translation = translated
-            
+           
         doc.translation_model = model
         doc.translation_time_seconds = round(processing_time, 3)
-        
+       
         db.commit()
         db.refresh(doc)
-        
+       
         return {
             "document_id": document_id,
             "text_type": text_type,
@@ -171,7 +158,7 @@ async def translate_text(
             "original_length": len(text_to_translate),
             "translated_length": len(translated)
         }
-        
+       
     except Exception as e:
         processing_time = time.time() - start_time
         raise HTTPException(
@@ -182,7 +169,6 @@ async def translate_text(
                 "processing_time": f"{processing_time:.2f}초"
             }
         )
-
 
 @router.get("/document/{document_id}")
 async def get_document(
@@ -196,11 +182,11 @@ async def get_document(
     # 사용자 권한 확인
     if not can_user_access_document(db, user_id, document_id):
         raise HTTPException(status_code=403, detail="이 문서에 접근할 권한이 없습니다.")
-    
+   
     doc = db.query(PdfDocument).filter(PdfDocument.id == document_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
-        
+       
     return {
         "id": doc.id,
         "filename": doc.filename,
@@ -220,7 +206,6 @@ async def get_document(
         "created_at": doc.created_at.isoformat() if doc.created_at else None,
     }
 
-
 @router.get("/documents/{user_id}")
 async def get_user_documents(
     user_id: int,
@@ -230,7 +215,7 @@ async def get_user_documents(
     사용자별 문서 목록 조회
     """
     documents = get_user_documents(db, user_id)
-    
+   
     return {
         "documents": [
             {
@@ -247,7 +232,6 @@ async def get_user_documents(
             } for doc in documents
         ],
         "total_count": len(documents)
-
     }
 
 @router.get("/models")
@@ -255,42 +239,10 @@ async def list_models():
     models = await get_available_models()
     return {"models": models}
 
-# [재훈] 2026-02-26
-# 추가: UI용 DB 문서 목록 조회 API (기존 로직 수정 없이 추가)
-@router.get("/documents")
-def list_all_documents(db: Session = Depends(get_db)):
-    docs = db.query(PdfDocument).order_by(PdfDocument.id.asc()).all()
-    
-    return [
-        {
-            "id": doc.id,
-            "filename": doc.filename,
-            "summary": (doc.summary or "(요약 없음)")[:80] + "..." if doc.summary else "(요약 없음)",
-            "model_used": doc.model_used or "-",
-            "char_count": f"{doc.char_count:,}" if doc.char_count else "-",
-            "created_at": doc.created_at.strftime("%Y-%m-%d %H:%M") if doc.created_at else "-",
-          
-            # [재훈] 2026-02-26 
-            # 컬럼 추가 
-            "extraction_time": f"{doc.extraction_time_seconds:.2f}초" if doc.extraction_time_seconds is not None else "-",
-            "summary_time": f"{doc.summary_time_seconds:.2f}초" if doc.summary_time_seconds is not None else "-",
-            "file_size_mb": f"{doc.file_size_bytes / (1024 * 1024):.1f} MB" if doc.file_size_bytes is not None else "-",
-            "pages": f"{doc.successful_pages or 0}/{doc.total_pages or '?'}"
-                     if doc.total_pages is not None else "-",
-            "translation_time": f"{doc.translation_time_seconds:.2f}초" if doc.translation_time_seconds is not None else "-",
-            "translation_model": doc.translation_model or "-",
-            "original_translation_preview": (doc.original_translation or "")[:80] + "..." if doc.original_translation else "-",
-            "summary_translation_preview": (doc.summary_translation or "")[:80] + "..." if doc.summary_translation else "-",
-            "status": "완료" if doc.successful_pages == doc.total_pages and doc.total_pages else "부분" if doc.successful_pages else "-"
-        }
-        for doc in docs
-    ]
-
 @router.post("/download")
 async def download_summary(summary: str = Form(...), filename: str = Form(default="summary")):
     content = summary.encode("utf-8")
     safe_filename = filename.replace(".pdf", "") + "_요약.txt"
-
     return Response(
         content=content,
         media_type="text/plain; charset=utf-8",
@@ -298,7 +250,6 @@ async def download_summary(summary: str = Form(...), filename: str = Form(defaul
             "Content-Disposition": f"attachment; filename*=UTF-8''{quote(safe_filename)}"
         },
     )
-
 
 @router.get("/admin/database-status")
 async def get_database_status(db: Session = Depends(get_db)):
@@ -309,11 +260,11 @@ async def get_database_status(db: Session = Depends(get_db)):
         # 데이터베이스 버전 확인
         version_result = db.execute(text("SELECT VERSION()"))
         db_version = version_result.fetchone()[0]
-        
+       
         # 테이블 존재 확인
         tables_result = db.execute(text("SHOW TABLES"))
         tables = [row[0] for row in tables_result.fetchall()]
-        
+       
         # pdf_documents 테이블 구조 확인 (존재하는 경우)
         table_structure = None
         if 'pdf_documents' in tables:
@@ -321,7 +272,7 @@ async def get_database_status(db: Session = Depends(get_db)):
             table_structure = [
                 {
                     "field": row[0],
-                    "type": row[1], 
+                    "type": row[1],
                     "null": row[2],
                     "key": row[3],
                     "default": row[4],
@@ -329,38 +280,38 @@ async def get_database_status(db: Session = Depends(get_db)):
                 }
                 for row in structure_result.fetchall()
             ]
-        
+       
         # 데이터 통계
         data_stats = {}
         if 'pdf_documents' in tables:
             total_docs = db.query(PdfDocument).count()
-            
+           
             original_translated = db.query(PdfDocument).filter(
                 PdfDocument.original_translation.isnot(None)
             ).count()
-            
+           
             summary_translated = db.query(PdfDocument).filter(
                 PdfDocument.summary_translation.isnot(None)
             ).count()
-            
+           
             # 최근 문서들
             recent_docs = db.query(PdfDocument).order_by(
                 PdfDocument.created_at.desc()
             ).limit(5).all()
-            
+           
             # 평균 처리 시간 (NULL이 아닌 경우만)
             avg_extraction_time = db.execute(text(
                 "SELECT AVG(extraction_time_seconds) FROM pdf_documents WHERE extraction_time_seconds IS NOT NULL"
             )).scalar()
-            
+           
             avg_summary_time = db.execute(text(
                 "SELECT AVG(summary_time_seconds) FROM pdf_documents WHERE summary_time_seconds IS NOT NULL"
             )).scalar()
-            
+           
             avg_translation_time = db.execute(text(
                 "SELECT AVG(translation_time_seconds) FROM pdf_documents WHERE translation_time_seconds IS NOT NULL"
             )).scalar()
-            
+           
             data_stats = {
                 "total_documents": total_docs,
                 "original_translated": original_translated,
@@ -385,7 +336,7 @@ async def get_database_status(db: Session = Depends(get_db)):
                     "translation_seconds": float(avg_translation_time) if avg_translation_time else None
                 }
             }
-        
+       
         return {
             "database_connection": "✅ 연결 성공",
             "database_version": db_version,
@@ -395,16 +346,15 @@ async def get_database_status(db: Session = Depends(get_db)):
             "data_statistics": data_stats,
             "timestamp": datetime.datetime.now().isoformat()
         }
-        
+       
     except Exception as e:
         raise HTTPException(
-            status_code=500, 
+            status_code=500,
             detail={
                 "error": "데이터베이스 상태 확인 실패",
                 "message": str(e)
             }
         )
-
 
 @router.get("/admin/documents")
 async def list_all_documents(
@@ -418,9 +368,17 @@ async def list_all_documents(
     try:
         offset = (page - 1) * limit
         
-        documents = db.query(PdfDocument).order_by(
-            PdfDocument.created_at.desc()
-        ).offset(offset).limit(limit).all()
+        # [재훈] 2026-03-01 추가: joinedload로 User 정보 함께 로드 (users 테이블 JOIN)
+        # 이 한 줄로 pdf_documents.user_id → users.full_name, username 자동 매핑 가능
+        # 전체 사용자 요약 목록을 동적으로 표시하기 위한 핵심 수정
+        documents = (
+            db.query(PdfDocument)
+            .options(joinedload(PdfDocument.owner))  # User 관계 로드
+            .order_by(PdfDocument.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
         
         total_count = db.query(PdfDocument).count()
         
@@ -442,7 +400,18 @@ async def list_all_documents(
                         "extraction": float(doc.extraction_time_seconds) if doc.extraction_time_seconds else None,
                         "summary": float(doc.summary_time_seconds) if doc.summary_time_seconds else None,
                         "translation": float(doc.translation_time_seconds) if doc.translation_time_seconds else None
-                    }
+                    },
+                    # [재훈] 2026-03-01 추가: 프론트에서 사용자 이름 표시 & 강조를 위해 실제 User 정보 포함
+                    # 회원가입 추가 시마다 자동으로 새로운 사용자 이름 반영 (동적 매핑)
+                    "user": {
+                        "id": doc.owner.id if doc.owner else None,
+                        "username": doc.owner.username if doc.owner else None,
+                        "full_name": doc.owner.full_name if doc.owner else "알수없음"
+                    },
+                    # [재훈] 2026-03-01 추가: 보기 버튼 클릭 시 summary를 바로 보여주기 위해 미리 포함
+                    # 별도 상세 API 호출 없이도 요약 내용 표시 가능 (네트워크 최적화 + 동적 구현)
+                    "summary": doc.summary if doc.summary else "요약 내용이 없습니다."
+                
                 }
                 for doc in documents
             ],
@@ -453,7 +422,7 @@ async def list_all_documents(
                 "total_pages": (total_count + limit - 1) // limit
             }
         }
-        
+       
     except Exception as e:
         raise HTTPException(
             status_code=500,

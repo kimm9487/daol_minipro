@@ -1,4 +1,4 @@
-name: base
+name: tfod  # ← base → tfod 로 변경
 channels:
   - defaults
   - conda-forge
