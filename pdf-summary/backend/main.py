@@ -1,6 +1,7 @@
 import os
 import bcrypt
-from fastapi import FastAPI, Form, Depends, HTTPException, status, UploadFile, File
+import json
+from fastapi import FastAPI, Form, Depends, HTTPException, status, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from sqlalchemy import text
@@ -9,7 +10,7 @@ from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.sql import func
 
 # database.py에서 설정한 Base, engine, get_db를 가져와 설정을 통일합니다.
-from database import Base, engine, get_db, User, UserSession
+from database import Base, engine, get_db, User, UserSession, AdminActivityLog, log_admin_activity
 from routers.summary import router as summary_router
 
 # --- 1. DB 모델 정의 ---
@@ -27,10 +28,10 @@ except Exception as e:
 app = FastAPI(title="PDF 요약 시스템 API")
 
 # [중요] CORS 미들웨어는 라우터 등록 "전에" 추가해야 합니다!
-# React 개발 서버(5173)와 frontend_old(5500)와의 통신을 위한 CORS 설정
+# React 개발 서버(5173, 5174)와 frontend_old(5500)와의 통신을 위한 CORS 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174", "http://localhost:3000","http://localhost:8000", "http://127.0.0.1:8000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -85,6 +86,18 @@ def register(
     )
     db.add(new_user)
     db.commit()
+    db.refresh(new_user)
+    
+    # 회원가입 로그 기록
+    log_admin_activity(
+        db=db,
+        admin_user_id=new_user.id,
+        action="USER_REGISTERED",
+        target_type="USER",
+        target_id=new_user.id,
+        details=json.dumps({"username": user_id, "email": user_email})
+    )
+    
     return {"message": "회원가입이 완료되었습니다."}
 
 # [로그인]
@@ -93,6 +106,16 @@ def login(user_id: str = Form(...), user_pw: str = Form(...), db: Session = Depe
     user = db.query(User).filter(User.username == user_id).first()
     if not user or not verify_password(user_pw, user.password_hash):
         raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 틀렸습니다.")
+    
+    # 로그인 로그 기록
+    log_admin_activity(
+        db=db,
+        admin_user_id=user.id,
+        action="USER_LOGIN",
+        target_type="USER",
+        target_id=user.id,
+        details=json.dumps({"username": user.username})
+    )
     
     return {
         "message": "로그인 성공",
@@ -186,6 +209,22 @@ def update_user_profile(
     
     db.commit()
     
+    # 프로필 수정 로그 기록
+    changes = []
+    if email:
+        changes.append("email changed")
+    if new_password:
+        changes.append("password changed")
+    
+    log_admin_activity(
+        db=db,
+        admin_user_id=user_db_id,
+        action="PROFILE_UPDATED",
+        target_type="USER",
+        target_id=user_db_id,
+        details=json.dumps({"changes": changes})
+    )
+    
     return {
         "message": "프로필이 성공적으로 수정되었습니다.",
         "username": user.username,
@@ -273,6 +312,71 @@ def get_admin_documents(db: Session = Depends(get_db)):
     except Exception as e:
         print(f"Admin Documents Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"문서 목록 조회 실패: {str(e)}")
+
+# ===== [추가] 관리자 회원 관리 API[규호] =====
+
+# [모든 회원 조회]
+@app.get("/auth/users")
+def get_all_users(db: Session = Depends(get_db)):
+    """모든 회원 목록 조회 (관리자용)"""
+    try:
+        users = db.query(User).order_by(User.created_at.desc()).all()
+        return [
+            {
+                "id": user.id,
+                "username": user.username,
+                "full_name": user.full_name,
+                "email": user.email,
+                "role": user.role,
+                "created_at": user.created_at.strftime("%Y-%m-%d %H:%M:%S") if user.created_at else None,
+                "is_active": user.is_active
+            }
+            for user in users
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"회원 목록 조회 실패: {str(e)}")
+
+# [회원 삭제]
+@app.delete("/auth/users/{user_id}")
+def delete_user(user_id: int, admin_user_id: int = Form(...), db: Session = Depends(get_db)):
+    """
+    회원 삭제 (관리자용)
+    Args:
+        user_id: 삭제할 사용자 ID
+        admin_user_id: 관리자 사용자 ID (로그 기록용)
+    """
+    try:
+        # 삭제할 사용자 확인
+        user_to_delete = db.query(User).filter(User.id == user_id).first()
+        if not user_to_delete:
+            raise HTTPException(status_code=404, detail="삭제할 사용자를 찾을 수 없습니다.")
+        
+        # 삭제 전 사용자 정보 저장 (로그용)
+        deleted_username = user_to_delete.username
+        
+        # 사용자 삭제
+        db.delete(user_to_delete)
+        db.commit()
+        
+        # 삭제 로그 기록
+        log_admin_activity(
+            db=db,
+            admin_user_id=admin_user_id,
+            action="USER_DELETED",
+            target_type="USER",
+            target_id=user_id,
+            details=json.dumps({"deleted_username": deleted_username})
+        )
+        
+        return {
+            "message": f"사용자 '{deleted_username}'이(가) 삭제되었습니다.",
+            "deleted_user_id": user_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"회원 삭제 실패: {str(e)}")
 
 # [루트 경로 확인]
 @app.get("/")

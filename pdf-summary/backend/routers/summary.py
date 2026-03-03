@@ -4,9 +4,10 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload  # [재훈] 2026-03-01 추가: joinedload 임포트
 from sqlalchemy import text
 from urllib.parse import quote
+import json
 from services.pdf_service import extract_text_from_pdf
-from services.ai_service import summarize_text, get_available_models, translate_to_english
-from database import get_db, PdfDocument, get_user_documents, can_user_access_document , User # [정재훈 ] 2026-03-02 추가 : User
+from services.ai_service import summarize_text, get_available_models, translate_to_english, categorize_document
+from database import get_db, PdfDocument, get_user_documents, can_user_access_document , User, log_admin_activity # [정재훈 ] 2026-03-02 추가 : User
 import datetime
 import time
 import io  # [정재훈] 2026-03-02 추가: CSV 생성용 io
@@ -77,6 +78,37 @@ async def summarize_pdf(
     db.add(doc)
     db.commit()
     db.refresh(doc)
+    
+    # ===== [추가] 문서 카테고리 자동 분류[규호] =====
+    try:
+        category_start = time.time()
+        category = await categorize_document(extracted_text, summary, model)
+        category_time = time.time() - category_start
+        
+        doc.category = category
+        db.commit()
+        print(f"✅ 문서 카테고리 분류 완료: {category} ({category_time:.2f}초)")
+    except Exception as e:
+        print(f"⚠️ 카테고리 분류 실패: {str(e)}")
+        doc.category = "기타"
+        db.commit()
+    
+    # 문서 업로드 로그 기록
+    log_admin_activity(
+        db=db,
+        admin_user_id=user_id,
+        action="DOCUMENT_UPLOADED",
+        target_type="DOCUMENT",
+        target_id=doc.id,
+        details=json.dumps({
+            "filename": file.filename,
+            "file_size_bytes": file_size,
+            "model": model,
+            "category": doc.category,
+            "is_important": is_important,
+            "is_public": is_public
+        })
+    )
 
     overall_time = time.time() - overall_start
 
@@ -87,6 +119,7 @@ async def summarize_pdf(
         "extracted_text": extracted_text,
         "summary": summary,
         "model_used": model,
+        "category": doc.category,
         "created_at": datetime.datetime.now().isoformat(),
         "is_important": doc.is_important,
         "password": doc.password,
@@ -171,6 +204,21 @@ async def translate_text(
        
         db.commit()
         db.refresh(doc)
+        
+        # 번역 로그 기록
+        log_admin_activity(
+            db=db,
+            admin_user_id=user_id,
+            action="DOCUMENT_TRANSLATED",
+            target_type="DOCUMENT",
+            target_id=document_id,
+            details=json.dumps({
+                "text_type": text_type,
+                "model": model,
+                "original_length": len(text_to_translate),
+                "translated_length": len(translated)
+            })
+        )
        
         return {
             "document_id": document_id,
