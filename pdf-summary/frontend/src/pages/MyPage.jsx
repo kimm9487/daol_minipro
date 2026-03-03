@@ -53,6 +53,8 @@ const MyPage = () => {
         const userDbId = localStorage.getItem("userDbId");
         const userId = localStorage.getItem("userId");
         
+        console.log('📌 MyPage 로드:', { userDbId, userId });
+        
         if (!userDbId) {
           console.error("userDbId가 없습니다");
           setLoading(false);
@@ -60,17 +62,26 @@ const MyPage = () => {
         }
         
         // 프로필 정보 조회
+        console.log(`📡 프로필 조회: http://localhost:8000/auth/profile/${userDbId}`);
         const profileResponse = await fetch(
           `http://localhost:8000/auth/profile/${userDbId}`,
-          { cache: 'no-store' }
+          { 
+            cache: 'no-store',
+            credentials: 'include'
+          }
         );
+        
+        console.log('📊 프로필 응답:', profileResponse.status);
         
         let userRole = "user";
         if (profileResponse.ok) {
           const profileData = await profileResponse.json();
+          console.log('✅ 프로필 데이터:', profileData);
           setUserInfo(profileData);
           setEditEmail(profileData.email);
           userRole = profileData.role;
+        } else {
+          console.warn('⚠️ 프로필 조회 실패:', profileResponse.status);
         }
         
         // ===== [수정] 관리자는 /api/admin/documents, 일반 유저는 /api/documents/{userDbId} 호출 =====
@@ -83,12 +94,17 @@ const MyPage = () => {
           historyUrl = `http://localhost:8000/api/documents/${userDbId}?limit=1000`;
         }
         
+        console.log(`📡 히스토리 조회: ${historyUrl}`);
         const historyResponse = await fetch(historyUrl, {
-          cache: 'no-store'
+          cache: 'no-store',
+          credentials: 'include'
         });
+        
+        console.log('📊 히스토리 응답:', historyResponse.status);
         
         if (historyResponse.ok) {
           const historyData = await historyResponse.json();
+          console.log('✅ 히스토리 데이터:', historyData);
           if (historyData && Array.isArray(historyData.documents)) {
             // 문서 목록을 히스토리 형식으로 변환
             const formattedHistory = historyData.documents.map(doc => ({
@@ -103,18 +119,22 @@ const MyPage = () => {
               extracted_text: doc.extracted_text
             }));
             setHistory(formattedHistory);
+            console.log(`✅ ${formattedHistory.length}개 문서 로드됨`);
             // ===== [추가] 히스토리 로드 후 페이지를 1로 리셋 =====
             setCurrentPage(1);
           } else {
-            console.error('응답 형식이 올바르지 않습니다:', historyData);
+            console.error('⚠️ 응답 형식이 올바르지 않습니다:', historyData);
           }
         } else {
-          console.error('히스토리 조회 실패:', historyResponse.status);
+          console.error('❌ 히스토리 조회 실패:', historyResponse.status);
+          const errorText = await historyResponse.text();
+          console.error('❌ 에러 내용:', errorText);
         }
         
         setLoading(false);
       } catch (error) {
-        console.error("데이터 로드 에러:", error);
+        console.error("❌ 데이터 로드 에러:", error);
+        console.error("❌ 에러 상세:", error.message);
         setLoading(false);
       }
     };
