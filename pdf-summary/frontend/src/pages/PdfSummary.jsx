@@ -21,7 +21,7 @@ const PdfSummary = () => {
         original: null,
         summary: null
     });
-ㅇ
+
     // [추가] 중요 문서 관련 상태
     const [isImportant, setIsImportant] = useState(false);
     const [documentPassword, setDocumentPassword] = useState("");
