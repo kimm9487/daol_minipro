@@ -4,7 +4,7 @@ import "./UserList.css";
 
 const UserList = () => {
   const currentUser = localStorage.getItem("userName") || "정재훈";
-  const isAdmin = localStorage.getItem("userRole") === "admin";   // ← 관리자 계정 권한
+  const isAdmin = localStorage.getItem("userRole") === "admin"; // ← 관리자 계정 권한
 
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -56,7 +56,7 @@ const UserList = () => {
                     hour12: false,
                   })
                   .replace(/\. /g, "-")
-                  .replace(" ", " ")
+                  .replace(" ", "\n")
               : "날짜 없음",
             filename: doc.filename || "파일명 없음",
             model: doc.model_used || "gemma3:latest",
@@ -268,6 +268,7 @@ const UserList = () => {
 
   const highlightText = (text, query) => {
     if (!query || !text) return text || "";
+
     const regex = new RegExp(
       `(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
       "gi",
@@ -279,7 +280,8 @@ const UserList = () => {
     <div className="summary-list-page">
       <div className="title-wrapper">
         <div className="title-bar"></div>
-        <h2>04. 요약 목록 보기</h2>
+
+        <h2>요약 목록 보기</h2>
       </div>
 
       <div className="description-wrapper">
@@ -349,7 +351,9 @@ const UserList = () => {
           >
             <option>전체 모델</option>
             <option>gemma3:latest</option>
-            <option>llama3:latest</option>
+
+            <option>gemma2:latest</option>
+            <option>gemma3:1b</option>
           </select>
           <button className="search-btn">검색</button>
         </div>

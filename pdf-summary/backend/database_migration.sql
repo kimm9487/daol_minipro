@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+=======
+-- Active: 1771563364130@@127.0.0.1@3306@pdf_summary
+>>>>>>> 3ea871d0db9d3016914b04f2ab8fa8e7159fc2bc
 -- ========================================
 -- PDF 요약 서비스 데이터베이스 마이그레이션
 -- ========================================
@@ -101,10 +105,27 @@ CREATE TABLE IF NOT EXISTS pdf_documents (
   total_pages INT COMMENT 'PDF 전체 페이지 수',
   successful_pages INT COMMENT '성공적으로 추출된 페이지 수',
   
+<<<<<<< HEAD
   PRIMARY KEY (id)
 ) ENGINE=InnoDB AUTO_INCREMENT=18 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ========================================
+=======
+  -- 문서 분류 필드
+  category ENUM('강의','법률안','보고서','기타') DEFAULT '기타' NOT NULL COMMENT '문서 카테고리',
+  
+  PRIMARY KEY (id),
+  KEY ix_pdf_documents_category (category)
+) ENGINE=InnoDB AUTO_INCREMENT=18 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ========================================
+-- 5-1. 기존 테이블에 category 컬럼 추가 (마이그레이션)
+-- ========================================
+ALTER TABLE pdf_documents ADD COLUMN IF NOT EXISTS category ENUM('강의','법률안','보고서','기타') DEFAULT '기타' NOT NULL COMMENT '문서 카테고리' AFTER successful_pages;
+ALTER TABLE pdf_documents ADD INDEX IF NOT EXISTS ix_pdf_documents_category (category);
+
+-- ========================================
+>>>>>>> 3ea871d0db9d3016914b04f2ab8fa8e7159fc2bc
 -- 6. 통계 정보 확인용 쿼리 (필요할 때 실행)
 -- ========================================
 /*
