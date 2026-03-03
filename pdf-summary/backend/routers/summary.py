@@ -17,8 +17,11 @@ router = APIRouter()
 @router.post("/summarize")
 async def summarize_pdf(
     file: UploadFile = File(...),
-    user_id: int = Form(...),  # 사용자 ID 추가
+    user_id: int = Form(...),
     model: str = Form(default="gemma3:latest"),
+    is_important: bool = Form(default=False),  # 중요문서 여부
+    password: str = Form(default=None),  # 4자리 비밀번호
+    is_public: bool = Form(default=True),  # 공개 여부
     db: Session = Depends(get_db),
 ):
     overall_start = time.time()
@@ -41,9 +44,22 @@ async def summarize_pdf(
     file_size = len(await file.read())
     await file.seek(0)  # 파일 포인터 리셋
 
-    # 4. DB 저장 (확장된 필드 포함)
+    # 4. 비밀번호 검증 (중요문서인 경우)
+    stored_password = None
+    if is_important:
+        if not password or len(password) != 4 or not password.isdigit():
+            raise HTTPException(
+                status_code=400,
+                detail="중요문서는 4자리 숫자 비밀번호가 필요합니다."
+            )
+        stored_password = password
+    else:
+        # 중요문서가 아니면 비밀번호는 null
+        stored_password = None
+
+    # 5. DB 저장 (확장된 필드 포함)
     doc = PdfDocument(
-        user_id=user_id,  # user_id 필드 추가
+        user_id=user_id,
         filename=file.filename,
         extracted_text=extracted_text,
         summary=summary,
@@ -54,6 +70,9 @@ async def summarize_pdf(
         successful_pages=extraction_result["successful_pages"],
         extraction_time_seconds=round(extraction_time, 3),
         summary_time_seconds=round(summary_time, 3),
+        is_important=is_important,  # 중요문서 여부
+        password=stored_password,  # 비밀번호 (중요문서만)
+        is_public=is_public,  # 공개/비공개
     )
     db.add(doc)
     db.commit()
@@ -69,6 +88,9 @@ async def summarize_pdf(
         "summary": summary,
         "model_used": model,
         "created_at": datetime.datetime.now().isoformat(),
+        "is_important": doc.is_important,
+        "password": doc.password,
+        "is_public": doc.is_public,
         "timing": {
             "extraction_time": f"{extraction_time:.2f}초",
             "summary_time": f"{summary_time:.2f}초",
@@ -210,14 +232,19 @@ async def get_document(
     }
 
 @router.get("/documents/{user_id}")
-async def get_user_documents(
+async def list_user_documents(
     user_id: int,
+    limit: int = 1000,
     db: Session = Depends(get_db),
 ):
     """
     사용자별 문서 목록 조회
+    Args:
+        user_id: 사용자 DB ID
+        limit: 조회할 최대 문서 개수 (기본값: 1000)
     """
-    documents = get_user_documents(db, user_id)
+    from database import get_user_documents as db_get_user_documents
+    documents = db_get_user_documents(db, user_id)
    
     return {
         "documents": [
@@ -232,9 +259,15 @@ async def get_user_documents(
                 "has_original_translation": bool(doc.original_translation),
                 "has_summary_translation": bool(doc.summary_translation),
                 "created_at": doc.created_at.isoformat() if doc.created_at else None,
-            } for doc in documents
+                "summary": doc.summary,
+                "extracted_text": doc.extracted_text,
+                "original_translation": doc.original_translation,
+                "summary_translation": doc.summary_translation,
+            } for doc in documents[:limit]
         ],
-        "total_count": len(documents)
+        "total_count": len(documents),
+        "page": 1,
+        "total_pages": 1,
     }
 
 @router.get("/models")

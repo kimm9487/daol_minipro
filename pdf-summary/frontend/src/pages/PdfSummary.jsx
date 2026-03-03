@@ -21,6 +21,11 @@ const PdfSummary = () => {
         original: null,
         summary: null
     });
+ㅇ
+    // [추가] 중요 문서 관련 상태
+    const [isImportant, setIsImportant] = useState(false);
+    const [documentPassword, setDocumentPassword] = useState("");
+    const [isPublic, setIsPublic] = useState(true);
 
     // 사용자 권한 확인
     useEffect(() => {
@@ -54,6 +59,10 @@ const PdfSummary = () => {
             setFileName(selectedFile.name);
             setStatus({ type: '', msg: '' });
             setResult(null);
+            // [추가] 파일 선택 시 중요문서 관련 상태 초기화
+            setIsImportant(false);
+            setDocumentPassword("");
+            setIsPublic(true);
         }
     };
 
@@ -78,8 +87,12 @@ const PdfSummary = () => {
             formData.append("file", file);
             formData.append("user_id", parseInt(userDbId));  // 정수로 변환
             formData.append("model", selectedModel);
+            // [추가] 중요문서 관련 정보 추가
+            formData.append("is_important", isImportant);
+            formData.append("password", isImportant ? documentPassword : null);
+            formData.append("is_public", isPublic);
 
-            console.log("Sending summarize request with user_id:", parseInt(userDbId), "model:", selectedModel);
+            console.log("Sending summarize request with user_id:", parseInt(userDbId), "model:", selectedModel, "is_important:", isImportant);
 
             const res = await fetch(`${API_BASE}/summarize`, { method: "POST", body: formData });
             const data = await res.json();
@@ -221,6 +234,47 @@ const PdfSummary = () => {
                     <select className="model-select" value={selectedModel} onChange={(e) => setSelectedModel(e.target.value)}>
                         {models.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
+                </div>
+
+                {/* [추가] 중요문서 관련 UI */}
+                <div className="important-doc-section">
+                    <label className="checkbox-label">
+                        <input 
+                            type="checkbox" 
+                            checked={isImportant}
+                            onChange={(e) => setIsImportant(e.target.checked)}
+                        />
+                        <span className="checkbox-text">🔒 중요문서 (비밀번호 보호)</span>
+                    </label>
+                    
+                    {isImportant && (
+                        <div className="password-input-group">
+                            <input 
+                                type="text"
+                                placeholder="4자리 숫자"
+                                value={documentPassword}
+                                onChange={(e) => {
+                                    // 숫자만 입력 가능, 최대 4자리
+                                    const value = e.target.value.replace(/[^0-9]/g, '').slice(0, 4);
+                                    setDocumentPassword(value);
+                                }}
+                                maxLength="4"
+                                className="password-input"
+                            />
+                            <span className="password-hint">
+                                {documentPassword.length}/4 (숫자만 입력)
+                            </span>
+                        </div>
+                    )}
+
+                    <label className="checkbox-label">
+                        <input 
+                            type="checkbox" 
+                            checked={isPublic}
+                            onChange={(e) => setIsPublic(e.target.checked)}
+                        />
+                        <span className="checkbox-text">📖 공개 (체크 해제 시 비공개)</span>
+                    </label>
                 </div>
 
                 {status.msg && <div className={`status ${status.type}`}>{status.msg}</div>}

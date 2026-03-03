@@ -111,6 +111,11 @@ class PdfDocument(Base):
     # 문서 분류 필드
     category = Column(Enum('강의', '법률안', '보고서', '기타', name='document_categories'), default='기타', nullable=False, index=True, comment="문서 카테고리 (강의, 법률안, 보고서, 기타)")
     
+    # 중요 문서 및 보안 관련 필드
+    is_important = Column(Boolean, default=False, comment="중요문서 여부")
+    password = Column(String(4), nullable=True, comment="4자리 숫자 비밀번호 (중요문서만 해당)")
+    is_public = Column(Boolean, default=True, comment="공개 여부 (True: 공개, False: 비공개)")
+    
     # 관계 설정
     owner = relationship("User", back_populates="documents")
 

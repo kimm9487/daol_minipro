@@ -16,23 +16,28 @@ from routers.summary import router as summary_router
 # User 모델은 database.py에서 가져옴
 # SummaryHistory 대신 database.py의 PdfDocument를 사용
 
-# 서버 시작 시 테이블 자동 생성 (기존 테이블 구조 유지)
-# Base.metadata.create_all(bind=engine)  # database.py에서 처리됨
+# 서버 시작 시 테이블 자동 생성
+try:
+    Base.metadata.create_all(bind=engine)
+    print("✅ 데이터베이스 테이블 자동 생성 완료")
+except Exception as e:
+    print(f"⚠️ 데이터베이스 생성 중 에러 (테이블이 이미 존재할 수 있음): {e}")
 
 # --- 2. FastAPI 앱 설정 ---
 app = FastAPI(title="PDF 요약 시스템 API")
 
-# summary 라우터 등록
-app.include_router(summary_router, prefix="/api", tags=["summary"])
-
+# [중요] CORS 미들웨어는 라우터 등록 "전에" 추가해야 합니다!
 # React 개발 서버(5173)와 frontend_old(5500)와의 통신을 위한 CORS 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5500", "http://localhost:5500"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# summary 라우터 등록
+app.include_router(summary_router, prefix="/api", tags=["summary"])
 
 # --- 3. 유틸리티 함수 (비밀번호 암호화) ---
 def hash_password(password: str) -> str:
