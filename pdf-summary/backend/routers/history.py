@@ -1,13 +1,13 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from database import get_db, PdfDocument
+from database import get_db, get_user_documents
 
-# 라우터 prefix를 /api/history로 설정
-router = APIRouter(prefix="/api/history", tags=["History"])
+router = APIRouter()
 
-@router.get("/{user_db_id}")
+# [마이페이지 히스토리 조회]
+@router.get("/api/history/{user_db_id}")
 def get_summary_history(user_db_id: int, db: Session = Depends(get_db)):
-    from database import get_user_documents
+    # database.py의 get_user_documents 함수 활용
     documents = get_user_documents(db, user_db_id)
     
     return [

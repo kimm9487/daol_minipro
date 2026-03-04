@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Form
 from sqlalchemy.orm import Session
 from database import get_db, User
-from routers.auth_utils import hash_password  # 비밀번호 암호화를 위해 가져옴
+from routers.auth import hash_password  # 비밀번호 암호화를 위해 가져옴
 import random
 import smtplib
 from email.mime.text import MIMEText
