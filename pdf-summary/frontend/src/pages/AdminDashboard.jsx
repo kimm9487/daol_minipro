@@ -4,12 +4,24 @@ import { useSessionValidator } from '../hooks/useSessionValidator';
 import './AdminDashboard.css';
 
 const AdminDashboard = () => {
-    // ===== [추가] 세션 유효성 검증 =====
-    useSessionValidator(30000); // 30초마다 세션 확인
+    // ===== [추가] 세션 유효성 검증 (10분 주기, 강제 로그아웃 대상은 즉시+5초) =====
+    useSessionValidator(); // 기본값 10분, 강제 로그아웃 대상이면 즉시+5초 주기로 검증
 
     const navigate = useNavigate();
     const API_BASE = 'http://localhost:8000/api';
-    const adminId = parseInt(localStorage.getItem('userDbId')); // 관리자 ID
+    const userDbIdStr = localStorage.getItem('userDbId');
+    const adminId = userDbIdStr ? parseInt(userDbIdStr) : null; // 관리자 ID
+    
+    console.log('AdminDashboard Init - userDbIdStr:', userDbIdStr, '파싱된 adminId:', adminId);
+    
+    // adminId가 없거나 NaN이면 로그인 페이지로 이동
+    useEffect(() => {
+        if (!adminId || isNaN(adminId)) {
+            console.error('관리자 ID가 없습니다. 로그인이 필요합니다.');
+            navigate('/login');
+        }
+    }, [adminId, navigate]);
+    
     const [dbStatus, setDbStatus] = useState(null);
     const [documents, setDocuments] = useState([]);
     const [activeSessions, setActiveSessions] = useState([]);
@@ -80,14 +92,22 @@ const AdminDashboard = () => {
         setLoading(prev => ({ ...prev, sessions: true }));
         try {
             const userId = localStorage.getItem('userDbId');
-            const response = await fetch(`http://localhost:8000/auth/admin/sessions?admin_user_id=${userId}`, {
+            const url = `http://localhost:8000/auth/admin/sessions?admin_user_id=${userId}`;
+            console.log('loadActiveSessions - 요청 URL:', url);
+            const response = await fetch(url, {
                 cache: 'no-store'
             });
+            console.log('loadActiveSessions - 응답 상태:', response.status, response.statusText);
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: 세션 조회 실패`);
             }
             const data = await response.json();
+            console.log('loadActiveSessions - 응답 데이터:', data);
             if (Array.isArray(data.sessions)) {
+                console.log('세션 배열 감지, 개수:', data.sessions.length);
+                if (data.sessions.length > 0) {
+                    console.log('첫 번째 세션 구조:', data.sessions[0]);
+                }
                 setActiveSessions(data.sessions);
             } else {
                 console.warn('예상치 못한 응답 형식:', data);
@@ -108,13 +128,30 @@ const AdminDashboard = () => {
         }
         try {
             const userId = localStorage.getItem('userDbId');
-            const response = await fetch(`http://localhost:8000/auth/admin/sessions/${sessionId}?admin_user_id=${userId}`, {
+            console.log('handleForceLogout - sessionId:', sessionId, '타입:', typeof sessionId);
+            console.log('handleForceLogout - userId:', userId);
+            
+            // 강제 로그아웃 대상의 user_id 찾기
+            const targetSession = activeSessions.find(s => s.session_id === sessionId);
+            const targetUserId = targetSession ? targetSession.user_id : null;
+            console.log('handleForceLogout - 강제 로그아웃 대상 user_id:', targetUserId);
+            
+            const url = `http://localhost:8000/auth/admin/sessions/${sessionId}?admin_user_id=${userId}`;
+            console.log('handleForceLogout - 최종 URL:', url);
+            const response = await fetch(url, {
                 method: 'DELETE'
             });
             if (!response.ok) {
                 const data = await response.json();
                 throw new Error(data.detail || `HTTP ${response.status}: 강제 로그아웃 실패`);
             }
+            
+            // 강제 로그아웃 대상을 sessionStorage에 저장 (대상 사용자가 즉시 감지하도록)
+            if (targetUserId) {
+                console.log(`대상 user_id ${targetUserId}를 감시 목록에 추가`);
+                sessionStorage.setItem('terminatedUserId', targetUserId);
+            }
+            
             alert('해당 사용자를 강제 로그아웃했습니다.');
             loadActiveSessions();
         } catch (err) {

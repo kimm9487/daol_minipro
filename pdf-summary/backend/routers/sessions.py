@@ -261,6 +261,7 @@ def get_all_sessions(
 @router.delete("/auth/admin/sessions/{session_id}")
 def admin_force_logout(
     session_id: int,
+    request: Request,
     admin_user_id: int = Query(...),
     db: Session = Depends(get_db)
 ):

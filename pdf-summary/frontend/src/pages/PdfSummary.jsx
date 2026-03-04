@@ -4,8 +4,8 @@ import { useSessionValidator } from '../hooks/useSessionValidator';
 import './PdfSummary.css';
 
 const PdfSummary = () => {
-    // ===== [추가] 세션 유효성 검증 =====
-    useSessionValidator(30000); // 30초마다 세션 확인
+    // ===== [추가] 세션 유효성 검증 (10분 주기, 강제 로그아웃 대상은 즉시+5초) =====
+    useSessionValidator(); // 기본값 10분, 강제 로그아웃 대상이면 즉시+5초 주기로 검증
 
     console.log("📄 PdfSummary 컴포넌트 렌더링됨");
     const API_BASE = "http://localhost:8000/api";
