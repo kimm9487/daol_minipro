@@ -1,5 +1,7 @@
 # summary.py 전체 코드 (권한 체크 추가 + 디버깅 로그 유지)
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Body  # [정재훈] 2026-03-02 추가: Body 임포트
+from pydantic import BaseModel
+from typing import Optional
 from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload  # [재훈] 2026-03-01 추가: joinedload 임포트
 from sqlalchemy import text
@@ -14,6 +16,19 @@ import io  # [정재훈] 2026-03-02 추가: CSV 생성용 io
 import csv  # [정재훈] 2026-03-02 추가: CSV 작성용 csv
 
 router = APIRouter()
+
+
+# ────────────────────────────────────────────────────────────────
+# Pydantic 모델 정의
+# ────────────────────────────────────────────────────────────────
+class DocumentUpdateRequest(BaseModel):
+    """문서 수정 요청 스키마"""
+    user_id: int
+    extracted_text: Optional[str] = None
+    summary: Optional[str] = None
+    filename: Optional[str] = None
+    is_important: bool = False
+    password: Optional[str] = None
 
 @router.post("/summarize")
 async def summarize_pdf(
@@ -277,6 +292,9 @@ async def get_document(
         "summary_time_seconds": float(doc.summary_time_seconds) if doc.summary_time_seconds else None,
         "translation_time_seconds": float(doc.translation_time_seconds) if doc.translation_time_seconds else None,
         "created_at": doc.created_at.isoformat() if doc.created_at else None,
+        "is_important": bool(doc.is_important),
+        "password": doc.password,
+        "is_public": bool(doc.is_public),
     }
 
 @router.get("/documents/{user_id}")
@@ -609,18 +627,26 @@ async def delete_document(
 @router.put("/summarize/{document_id}")
 async def update_document(
     document_id: int,
-    user_id: int = Form(...),
-    extracted_text: str = Form(None),
-    summary: str = Form(None),
+    request: DocumentUpdateRequest,
     db: Session = Depends(get_db),
 ):
     """
     문서 수정 엔드포인트 (사용자용)
     - 관리자: 모든 문서 수정 가능
     - 일반 사용자: 본인 문서만 수정 가능
+    
+    요청 body format:
+    {
+      "user_id": 1,
+      "extracted_text": "수정된 원문",
+      "summary": "수정된 요약",
+      "filename": "수정된파일명.pdf",
+      "is_important": false,
+      "password": null
+    }
     """
     # 권한 확인
-    if not can_user_access_document(db, user_id, document_id):
+    if not can_user_access_document(db, request.user_id, document_id):
         raise HTTPException(status_code=403, detail="이 문서를 수정할 권한이 없습니다.")
     
     # 문서 조회
@@ -629,28 +655,47 @@ async def update_document(
         raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
     
     # 필드 업데이트
-    if extracted_text is not None:
-        document.extracted_text = extracted_text
-        document.char_count = len(extracted_text)
+    if request.extracted_text is not None:
+        document.extracted_text = request.extracted_text
+        document.char_count = len(request.extracted_text)
     
-    if summary is not None:
-        document.summary = summary
+    if request.summary is not None:
+        document.summary = request.summary
+    
+    if request.filename is not None:
+        document.filename = request.filename
+    
+    # 중요 문서 설정 처리
+    if request.is_important:
+        # 중요문서로 설정할 때
+        if not request.password or len(request.password) != 4 or not request.password.isdigit():
+            raise HTTPException(status_code=400, detail="중요문서는 4자리 숫자 비밀번호가 필요합니다.")
+        document.is_important = True
+        document.password = request.password
+    else:
+        # 중요문서 해제할 때
+        document.is_important = False
+        document.password = None
     
     document.updated_at = datetime.datetime.now()
     db.commit()
     db.refresh(document)
     
     # 관리자 활동 로그 기록
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == request.user_id).first()
     log_admin_activity(
         db=db,
-        admin_user_id=user_id,
+        admin_user_id=request.user_id,
         action="DOCUMENT_UPDATED",
         target_type="DOCUMENT",
         target_id=document_id,
         details=json.dumps({
             "filename": document.filename,
-            "updated_fields": ["extracted_text" if extracted_text else "", "summary" if summary else ""],
+            "updated_fields": [
+                "extracted_text" if request.extracted_text else "",
+                "summary" if request.summary else "",
+                "filename" if request.filename else ""
+            ],
             "updated_by_admin": user.role == 'admin' if user else False
         })
     )
