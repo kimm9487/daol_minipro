@@ -2,9 +2,16 @@
 import React, { useState, useEffect } from "react";
 import "./UserList.css";
 
+// ────────────────────────────────────────────────────────────────
+// 메인 컴포넌트 : 전체 요약 목록 페이지
+// ────────────────────────────────────────────────────────────────
 const UserList = () => {
-  const currentUser = localStorage.getItem("userName") || "정재훈";
-  const isAdmin = localStorage.getItem("userRole") === "admin"; // ← 관리자 계정 권한
+  const currentUser = localStorage.getItem("userName");
+  const currentUserIdStr = localStorage.getItem("userDbId");
+  const currentUserId = currentUserIdStr ? Number(currentUserIdStr) : null;
+  const userRole = localStorage.getItem("userRole") || "";
+  const isAdmin = userRole.trim().toLowerCase() === "admin";
+  // const isAdmin = true; // 테스트용 강제 ON
 
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -13,38 +20,65 @@ const UserList = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortOption, setSortOption] = useState("최신순");
   const [modelFilter, setModelFilter] = useState("전체 모델");
+  const [publicFilter, setPublicFilter] = useState("all");
+  const [importantFilter, setImportantFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("전체");
+
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(5);
 
-  // [정재훈] 2026-03-02 추가: 체크박스 선택 상태 관리 (문서 ID 배열)
+  // [정재훈] 2026-03-02 추가: 체크박스 선택 상태
   const [selectedItems, setSelectedItems] = useState([]);
 
-  // [재훈] 2026-03-01 추가: 보기 버튼 클릭 시 해당 문서의 summary만 모달에 표시
+  // [재훈] 2026-03-01 추가: 요약 보기 모달
   const [selectedSummary, setSelectedSummary] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // [정재훈] 2026-03-02 추가: 정렬 상태 관리 (컬럼명 + 방향)
+  // [재훈] 2026-03-03 추가: 중요문서 비밀번호 모달
+  const [passwordInput, setPasswordInput] = useState("");
+  const [passwordDocId, setPasswordDocId] = useState(null);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false); // ← 이 줄 추가
+  // [정재훈] 2026-03-02 추가: 정렬 상태
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
+
+  // [재훈] 2026-03-03 추가: 동적 모델 목록 (전체 모델 필터 옵션)
+  const [availableModels, setAvailableModels] = useState(["전체 모델"]);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const response = await fetch(
-          "http://localhost:8000/api/admin/documents",
-        );
-        if (!response.ok) throw new Error("데이터 불러오기 실패");
+        // ────────────────────────────────────────────────────────────────
+        // [추가] 사용자 role 정보 가져오기 (이미 있는 API 활용)
+        // ────────────────────────────────────────────────────────────────
+        const userDbId = localStorage.getItem("userDbId");
+        if (userDbId) {
+          try {
+            const profileRes = await fetch(
+              `http://localhost:8000/auth/profile/${userDbId}`,
+            );
+            if (profileRes.ok) {
+              const profileData = await profileRes.json();
+              localStorage.setItem("userRole", profileData.role);
+              console.log("profile에서 가져온 role:", profileData.role);
+            }
+          } catch (err) {
+            console.error("role 가져오기 실패:", err);
+          }
+        }
 
-        const result = await response.json();
+        // 문서 목록 불러오기
+        const docRes = await fetch("http://localhost:8000/api/admin/documents");
+        if (!docRes.ok) throw new Error("문서 목록 불러오기 실패");
+        const docResult = await docRes.json();
 
-        const mappedData = result.documents.map((doc, index) => {
+        const mappedData = docResult.documents.map((doc, index) => {
           const createdDate = doc.created_at ? new Date(doc.created_at) : null;
-
           return {
-            id: doc.id || index + 1,
-            userId: doc.user?.id || "N/A", // 내부용 (툴팁에만 사용)
-            username: doc.user?.username || "알수없음", // 로그인 ID
-            fullName: doc.user?.full_name || doc.user?.username || "알수없음", // 표시용 이름
+            id: Number(doc.id || index + 1),
+            userId: doc.user?.id ?? null,
+            username: doc.user?.username || "알수없음",
+            fullName: doc.user?.full_name || doc.user?.username || "알수없음",
             datetime: createdDate
               ? createdDate
                   .toLocaleString("ko-KR", {
@@ -64,10 +98,23 @@ const UserList = () => {
             status: "완료",
             summary: doc.summary || "요약 내용이 없습니다.",
             sortDate: createdDate,
+            isPublic: doc.is_public ?? true,
+            isImportant: doc.is_important ?? false,
+            password: doc.password ?? null,
+            category: doc.category || "기타", // ← 추가
           };
         });
 
         setData(mappedData);
+
+        // 동적 모델 목록 불러오기 (필터 옵션용)
+        const modelRes = await fetch("http://localhost:8000/api/models");
+        if (modelRes.ok) {
+          const modelResult = await modelRes.json();
+          if (modelResult.models && modelResult.models.length > 0) {
+            setAvailableModels(["전체 모델", ...new Set(modelResult.models)]);
+          }
+        }
       } catch (err) {
         setError(err.message);
         console.error("데이터 로드 오류:", err);
@@ -77,28 +124,72 @@ const UserList = () => {
     };
 
     fetchData();
+    const role = localStorage.getItem("userRole");
+    console.log(
+      "userRole 키 존재 여부:",
+      localStorage.getItem("userRole") !== null,
+    );
+    console.log("userRole 원본 값:", role);
+    console.log("JSON.stringify로 본 원본:", JSON.stringify(role));
+    console.log("trim 후:", role?.trim());
+    console.log("trim + lowercase:", role?.trim().toLowerCase());
+    console.log("admin 비교 결과:", role?.trim().toLowerCase() === "admin");
+    console.log("localStorage 전체 키 목록:", Object.keys(localStorage));
   }, []);
 
-  // [정재훈] 2026-03-02 추가: 체크박스 토글 함수 (현재 사용자 문서만 선택 가능)
-  const handleCheckboxChange = (docId, username, fullName) => {
-    if (username !== currentUser && fullName !== currentUser) return;
+  // 테이블 상단에 컬럼 정의 배열 만들기
+  const columns = [
+    { key: null, label: "선택", width: "40px", sortable: false },
+    { key: null, label: "#", sortable: false },
+    { key: "datetime", label: "날짜 / 시간", sortable: true },
+    { key: "username", label: "ID", sortable: true },
+    { key: "fullName", label: "사용자", sortable: true },
+    { key: "filename", label: "파일명", sortable: true },
+    { key: "model", label: "AI 모델", sortable: true },
+    { key: "charCount", label: "원문자수", sortable: true },
+    { key: "category", label: "분류", sortable: true },
+    { key: "isPublic", label: "공개여부", sortable: true },
+    { key: "isImportant", label: "중요", sortable: true },
+    { key: null, label: "상태", sortable: false },
+    { key: null, label: "보기", sortable: false },
+  ];
 
-    const numericId = Number(docId);
-
-    // NaN이거나 유효하지 않으면 무시
-    if (isNaN(numericId) || numericId <= 0) {
-      console.warn("[정재훈] 유효하지 않은 docId:", docId);
-      return;
-    }
-
-    setSelectedItems((prev) =>
-      prev.includes(numericId)
-        ? prev.filter((id) => id !== numericId)
-        : [...prev, numericId],
-    );
+  // [재훈] 2026-03-03 안전한 본인 문서 판단 함수 (한 번만 선언)
+  const isMyDocument = (item) => {
+    if (!currentUserId || isNaN(currentUserId)) return false;
+    const docUserId = Number(item.userId);
+    if (isNaN(docUserId)) return false; // "N/A" 등 문자열이면 false
+    return currentUserId === docUserId;
   };
 
-  // [정재훈] 2026-03-02 최종 수정: Body에 user_id도 함께 보내기 (401 에러 완전 해결)
+  // [재훈] 2026-03-03 체크박스 활성화 조건: 공개 문서 OR 본인 문서
+  const canCheck = (item) => item.isPublic || isMyDocument(item);
+
+  // 보기 버튼 활성화 조건: 공개 OR 본인
+  const canView = (item) => {
+    if (isAdmin) {
+      return true; // 관리자는 모든 문서 볼 수 있음 (비공개 포함)
+    }
+    return item.isPublic || isMyDocument(item);
+  };
+
+  // handleCheckboxChange 함수 (ID를 항상 Number로 저장)
+  const handleCheckboxChange = (docId) => {
+    const numericId = Number(docId);
+    if (isNaN(numericId) || numericId <= 0) return;
+
+    const doc = data.find((item) => Number(item.id) === numericId);
+    if (!doc || !(doc.isPublic || isMyDocument(doc) || isAdmin)) return;
+
+    setSelectedItems((prev) => {
+      const newSelection = prev.includes(numericId)
+        ? prev.filter((id) => id !== numericId)
+        : [...prev, numericId];
+      console.log("체크 변경 후 selectedItems:", newSelection); // 디버깅 로그
+      return newSelection;
+    });
+  };
+
   const handleDownload = async () => {
     if (selectedItems.length === 0) {
       alert("다운로드할 항목을 선택하세요.");
@@ -106,15 +197,27 @@ const UserList = () => {
     }
 
     const safeSelectedIds = selectedItems
-      .map((id) => Number(id))
+      .map(Number)
       .filter((id) => !isNaN(id) && id > 0);
+    const selectedDocs = data.filter((item) =>
+      safeSelectedIds.includes(Number(item.id)),
+    );
+    const hasImportant = selectedDocs.some((doc) => doc.isImportant);
+
+    if (hasImportant) {
+      const confirm = window.confirm(
+        "선택한 항목 중 중요 문서가 포함되어 있습니다.\n" +
+          "CSV 파일에는 요약 내용의 처음 300자만 포함되며,\n" +
+          "전체 내용은 '보기' 버튼으로 비밀번호를 입력해야 확인할 수 있습니다.\n\n" +
+          "그래도 다운로드하시겠습니까?",
+      );
+      if (!confirm) {
+        return; // 사용자가 취소하면 여기서 함수 종료
+      }
+    }
 
     try {
-      // 여기서부터 실제 fetch + blob 다운로드 코드가 빠져 있거나 주석처리된 상태로 보임
-      // ↓↓↓ 이 부분이 없으면 버튼 눌러도 아무 일도 안 일어남 ↓↓↓
-
       let sendUserId = currentUser;
-
       const usernameRes = await fetch(
         "http://localhost:8000/api/admin/current-username",
         {
@@ -123,13 +226,10 @@ const UserList = () => {
           body: `user_id=${encodeURIComponent(currentUser)}`,
         },
       );
-
       if (usernameRes.ok) {
         const data = await usernameRes.json();
         sendUserId = data.username;
-        console.log("[정재훈] 서버에서 조회한 실제 username:", sendUserId);
       }
-
       const response = await fetch(
         "http://localhost:8000/api/admin/download-selected",
         {
@@ -141,18 +241,15 @@ const UserList = () => {
           }),
         },
       );
-
       if (!response.ok) {
         const errText = await response.text();
         throw new Error(`다운로드 실패: ${response.status} - ${errText}`);
       }
-
-      // ★★★★★ 여기부터 blob → 파일 다운로드 로직이 핵심 ★★★★★
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${sendUserId}_선택_요약목록.csv`; // 파일명
+      a.download = `${sendUserId}_선택_요약목록.csv`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -162,7 +259,7 @@ const UserList = () => {
       alert("다운로드 중 오류가 발생했습니다.\n" + err.message);
     }
   };
-
+  //handleViewClick – 중요 문서 부분에 관리자 예외
   const handleViewClick = (docId) => {
     const doc = data.find((item) => item.id === docId);
     if (!doc) {
@@ -170,28 +267,66 @@ const UserList = () => {
       return;
     }
 
-    if (doc.username !== currentUser && doc.fullName !== currentUser) {
-      alert("이 문서는 당신이 작성한 것이 아닙니다.");
+    // 관리자도 아닌데 볼 수 없는 문서라면 차단
+    if (!isAdmin && !canView(doc)) {
+      alert("이 문서는 비공개입니다. 작성자만 볼 수 있습니다.");
       return;
     }
 
-    setSelectedSummary(doc.summary);
-    setIsModalOpen(true);
+    // 여기까지 왔으면 관리자이거나 볼 수 있는 문서임
+    if (doc.isImportant) {
+      // 중요 문서 → 패스워드 모달 열기
+      // 관리자일 때는 비밀번호 없이 바로 요약 볼 수 있게 하거나,
+      // 관리자도 비밀번호 입력하도록 둘 중 선택 가능
+
+      // 옵션 1: 관리자는 비밀번호 없이 바로 보기 (추천)
+      if (isAdmin) {
+        setSelectedSummary(doc.summary);
+        setIsModalOpen(true);
+        return;
+      }
+
+      // 옵션 2: 관리자도 비밀번호 입력하게 하려면 아래 그대로 두기
+      setPasswordDocId(doc.id);
+      setPasswordInput("");
+      setIsPasswordModalOpen(true);
+    } else {
+      // 일반 문서 → 바로 요약 모달
+      setSelectedSummary(doc.summary);
+      setIsModalOpen(true);
+    }
+  };
+  //handlePasswordSubmit – 관리자라면 무조건 통과 (안전장치)
+  const handlePasswordSubmit = () => {
+    const doc = data.find((item) => item.id === passwordDocId);
+    if (!doc) return;
+
+    // ★ 관리자라면 비밀번호 상관없이 통과 ★
+    if (isAdmin || doc.password === passwordInput) {
+      setSelectedSummary(doc.summary);
+      setIsModalOpen(true);
+      setIsPasswordModalOpen(false);
+      setPasswordDocId(null);
+      setPasswordInput("");
+    } else {
+      alert("비밀번호가 틀렸습니다.");
+    }
   };
 
   const closeModal = () => {
     setIsModalOpen(false);
     setSelectedSummary(null);
+    setPasswordDocId(null);
+    setPasswordInput("");
+    setIsPasswordModalOpen(false);
   };
 
-  // [정재훈] 2026-03-02 추가: 컬럼 클릭 시 정렬 토글
   const requestSort = (key) => {
     let direction = "asc";
-    if (sortConfig.key === key && sortConfig.direction === "asc") {
+    if (sortConfig.key === key && sortConfig.direction === "asc")
       direction = "desc";
-    }
     setSortConfig({ key, direction });
-    setCurrentPage(1); // 정렬 시 페이지 초기화
+    setCurrentPage(1);
   };
 
   if (loading)
@@ -205,18 +340,52 @@ const UserList = () => {
 
   let filteredData = data.filter(
     (item) =>
-      item.filename.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.model.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.status.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.charCount.includes(searchTerm) ||
-      item.datetime.toLowerCase().includes(searchTerm.toLowerCase()),
+      (item.filename || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.fullName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.username || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.model || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.status || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      String(item.charCount || "").includes(searchTerm) ||
+      (item.datetime || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.filename || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.fullName || "").toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
+  // 공개/비공개 기본 권한 필터 (이 부분만 수정)
+  filteredData = filteredData.filter((item) => {
+    if (isAdmin) {
+      return true; // 관리자는 모든 문서 (비공개 포함) 다 봄
+    }
+    return isMyDocument(item) || item.isPublic; // 일반 유저는 본인 + 공개만
+  });
+
+  // 모델 필터 (기존)
   if (modelFilter !== "전체 모델") {
     filteredData = filteredData.filter((item) => item.model === modelFilter);
   }
+
+  // 새로 추가: 분류 필터
+  if (categoryFilter !== "전체") {
+    filteredData = filteredData.filter(
+      (item) => item.category === categoryFilter,
+    );
+  }
+
+  // 공개여부 필터 (새로 추가)
+  if (publicFilter === "public") {
+    filteredData = filteredData.filter((item) => item.isPublic);
+  } else if (publicFilter === "private") {
+    filteredData = filteredData.filter((item) => !item.isPublic);
+  }
+  // "all"이면 필터링 안 함
+
+  // 중요 여부 필터 (새로 추가)
+  if (importantFilter === "important") {
+    filteredData = filteredData.filter((item) => item.isImportant);
+  } else if (importantFilter === "normal") {
+    filteredData = filteredData.filter((item) => !item.isImportant);
+  }
+  // "all"이면 필터링 안 함
 
   if (sortOption === "최신순") {
     filteredData.sort(
@@ -228,27 +397,20 @@ const UserList = () => {
     );
   }
 
-  // [정재훈] 2026-03-02 추가: sortConfig에 따라 데이터 정렬
   if (sortConfig.key) {
     filteredData.sort((a, b) => {
       const aValue = a[sortConfig.key];
       const bValue = b[sortConfig.key];
-
-      // 날짜/시간은 Date 객체로 비교
       if (sortConfig.key === "datetime") {
         const dateA = new Date(a.sortDate || a.datetime);
         const dateB = new Date(b.sortDate || b.datetime);
         return sortConfig.direction === "asc" ? dateA - dateB : dateB - dateA;
       }
-
-      // 숫자형 (원문자수 등)
       if (typeof aValue === "number" && typeof bValue === "number") {
         return sortConfig.direction === "asc"
           ? aValue - bValue
           : bValue - aValue;
       }
-
-      // 문자열 기본 비교
       const strA = String(aValue || "").toLowerCase();
       const strB = String(bValue || "").toLowerCase();
       return sortConfig.direction === "asc"
@@ -258,80 +420,62 @@ const UserList = () => {
   }
 
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
-  const indexOfLast = currentPage * itemsPerPage;
-  const indexOfFirst = indexOfLast - itemsPerPage;
-  const currentItems = filteredData.slice(indexOfFirst, indexOfLast);
+  const currentItems = filteredData.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage,
+  );
 
   const goToPage = (page) => {
     if (page >= 1 && page <= totalPages) setCurrentPage(page);
   };
 
-  const highlightText = (text, query) => {
-    if (!query || !text) return text || "";
-
-    const regex = new RegExp(
-      `(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
-      "gi",
-    );
-    return text.toString().replace(regex, '<span class="highlight">$1</span>');
+  const highlightText = (text, term) => {
+    if (!term || !text) return text || "";
+    try {
+      const regex = new RegExp(
+        `(${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
+        "gi",
+      );
+      return text.replace(regex, '<span class="highlight">$1</span>');
+    } catch {
+      return text;
+    }
   };
 
   return (
     <div className="summary-list-page">
+      {/* 제목 */}
       <div className="title-wrapper">
         <div className="title-bar"></div>
-
-        <h2>요약 목록 보기</h2>
+        <h2>요약 목록</h2>
       </div>
 
+      {/* 설명 + 다운로드 */}
       <div className="description-wrapper">
         <div className="description-box">
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              width: "100%",
-              gap: "16px",
-              flexWrap: "wrap",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-                flex: 1,
-              }}
-            >
-              <span className="blue-icon">📝</span>
-              <p style={{ margin: 0 }}>
-                전체 사용자의 요약 이력을 조회할 수 있습니다. (본인 포함 전체
-                공개)
-              </p>
-            </div>
-
-            <button className="download-btn" onClick={handleDownload}>
-              <span className="download-icon">⬇</span> 목록 다운로드
-            </button>
-          </div>
+          📝 전체 사용자의 요약 이력을 조회할 수 있습니다. (본인 포함 전체 공개)
+          <button className="download-btn" onClick={handleDownload}>
+            선택 항목 CSV 다운로드
+          </button>
         </div>
       </div>
 
+      {/* 필터 */}
       <div className="filter-container">
         <div className="filter-bar">
           <div className="search-group">
-            <span className="search-icon">🔍</span>
             <input
               type="text"
-              placeholder="파일명, 사용자, 모델 등 검색..."
+              placeholder="파일명, 사용자, 날짜 등 검색..."
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
                 setCurrentPage(1);
               }}
             />
+            <span className="search-icon">🔍</span>
           </div>
+
           <select
             value={sortOption}
             onChange={(e) => {
@@ -339,9 +483,25 @@ const UserList = () => {
               setCurrentPage(1);
             }}
           >
-            <option>최신순</option>
-            <option>오래된순</option>
+            <option value="최신순">최신순</option>
+            <option value="오래된순">오래된순</option>
           </select>
+
+          {/* 새로 추가: 분류 필터 */}
+          <select
+            value={categoryFilter}
+            onChange={(e) => {
+              setCategoryFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+          >
+            <option value="전체">분류: 전체</option>
+            <option value="강의">강의</option>
+            <option value="법률안">법률안</option>
+            <option value="보고서">보고서</option>
+            <option value="기타">기타</option>
+          </select>
+
           <select
             value={modelFilter}
             onChange={(e) => {
@@ -349,116 +509,62 @@ const UserList = () => {
               setCurrentPage(1);
             }}
           >
-            <option>전체 모델</option>
-            <option>gemma3:latest</option>
-
-            <option>gemma2:latest</option>
-            <option>gemma3:1b</option>
+            {availableModels.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
           </select>
+
+          <select
+            value={publicFilter}
+            onChange={(e) => {
+              setPublicFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+          >
+            <option value="public">공개된 문서</option>
+            <option value="all">전체 (내 비공개 포함)</option>
+            <option value="private">내 비공개 문서</option>
+          </select>
+
           <button className="search-btn">검색</button>
         </div>
       </div>
 
+      {/* 테이블 */}
       <div className="table-wrapper">
         <table className="summary-table">
           <thead>
             <tr>
-              <th style={{ width: "40px" }}>선택</th>
-              <th>#</th>
-
-              {/* [정재훈] 2026-03-02 추가: 정렬 버튼 */}
-              <th className="sortable" onClick={() => requestSort("datetime")}>
-                날짜 / 시간
-                <span
-                  className={`sort-icon ${sortConfig.key === "datetime" ? sortConfig.direction : "none"}`}
+              {columns.map((col, index) => (
+                <th
+                  key={index}
+                  style={col.width ? { width: col.width } : undefined}
+                  className={col.sortable ? "sortable" : ""}
+                  onClick={
+                    col.sortable ? () => requestSort(col.key) : undefined
+                  }
                 >
-                  {sortConfig.key === "datetime"
-                    ? sortConfig.direction === "asc"
-                      ? " ▲"
-                      : " ▼"
-                    : " ⇅"}
-                </span>
-              </th>
-
-              <th className="sortable" onClick={() => requestSort("username")}>
-                ID
-                <span
-                  className={`sort-icon ${sortConfig.key === "username" ? sortConfig.direction : "none"}`}
-                >
-                  {sortConfig.key === "username"
-                    ? sortConfig.direction === "asc"
-                      ? " ▲"
-                      : " ▼"
-                    : " ⇅"}
-                </span>
-              </th>
-
-              <th className="sortable" onClick={() => requestSort("fullName")}>
-                사용자
-                <span
-                  className={`sort-icon ${sortConfig.key === "fullName" ? sortConfig.direction : "none"}`}
-                >
-                  {sortConfig.key === "fullName"
-                    ? sortConfig.direction === "asc"
-                      ? " ▲"
-                      : " ▼"
-                    : " ⇅"}
-                </span>
-              </th>
-
-              <th className="sortable" onClick={() => requestSort("filename")}>
-                파일명
-                <span
-                  className={`sort-icon ${sortConfig.key === "filename" ? sortConfig.direction : "none"}`}
-                >
-                  {sortConfig.key === "filename"
-                    ? sortConfig.direction === "asc"
-                      ? " ▲"
-                      : " ▼"
-                    : " ⇅"}
-                </span>
-              </th>
-
-              <th className="sortable" onClick={() => requestSort("model")}>
-                AI 모델
-                <span
-                  className={`sort-icon ${sortConfig.key === "model" ? sortConfig.direction : "none"}`}
-                >
-                  {sortConfig.key === "model"
-                    ? sortConfig.direction === "asc"
-                      ? " ▲"
-                      : " ▼"
-                    : " ⇅"}
-                </span>
-              </th>
-
-              <th className="sortable" onClick={() => requestSort("charCount")}>
-                원문자수
-                <span
-                  className={`sort-icon ${sortConfig.key === "charCount" ? sortConfig.direction : "none"}`}
-                >
-                  {sortConfig.key === "charCount"
-                    ? sortConfig.direction === "asc"
-                      ? " ▲"
-                      : " ▼"
-                    : " ⇅"}
-                </span>
-              </th>
-
-              <th>상태</th>
-              <th>보기</th>
+                  {col.label}
+                  {col.sortable && (
+                    <span
+                      className={`sort-icon ${sortConfig.key === col.key ? sortConfig.direction : "none"}`}
+                    >
+                      {sortConfig.key === col.key
+                        ? sortConfig.direction === "asc"
+                          ? " ▲"
+                          : " ▼"
+                        : " ⇅"}
+                    </span>
+                  )}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {currentItems.map((item, index) => (
-              <tr
-                key={item.id}
-                className={
-                  item.username === currentUser || item.fullName === currentUser
-                    ? "my-item"
-                    : ""
-                }
-              >
+            {currentItems.map((item) => (
+              <tr key={item.id} className={isMyDocument(item) ? "my-item" : ""}>
                 <td>
                   <input
                     type="checkbox"
@@ -470,13 +576,9 @@ const UserList = () => {
                         item.fullName,
                       )
                     }
-                    disabled={
-                      item.username !== currentUser &&
-                      item.fullName !== currentUser
-                    }
+                    disabled={!(item.isPublic || isMyDocument(item) || isAdmin)} // 공개 = 체크 가능, 비공개 = 본인만 가능 , 관리자 전부 허용
                   />
                 </td>
-                {/* 여기만 수정됨 → # 컬럼에 실제 문서 ID 표시 */}
                 <td>{item.id}</td>
                 <td
                   dangerouslySetInnerHTML={{
@@ -510,6 +612,26 @@ const UserList = () => {
                     __html: highlightText(item.charCount, searchTerm),
                   }}
                 />
+                {/* 추가: 분류 td */}
+                <td
+                  dangerouslySetInnerHTML={{
+                    __html: highlightText(item.category || "기타", searchTerm),
+                  }}
+                />
+                <td>
+                  {item.isPublic ? (
+                    <span className="status-badge public">공개</span>
+                  ) : (
+                    <span className="status-badge private">비공개</span>
+                  )}
+                </td>
+                <td>
+                  {item.isImportant ? (
+                    <span className="status-badge important">중요</span>
+                  ) : (
+                    "-"
+                  )}
+                </td>
                 <td
                   dangerouslySetInnerHTML={{
                     __html: highlightText(item.status, searchTerm),
@@ -519,6 +641,7 @@ const UserList = () => {
                   <button
                     className="view-btn"
                     onClick={() => handleViewClick(item.id)}
+                    disabled={!canView(item)}
                   >
                     보기
                   </button>
@@ -526,11 +649,10 @@ const UserList = () => {
               </tr>
             ))}
 
-            {/* [정재훈] 2026-03-02 수정: hydration 에러 방지 - 빈 행 안전하게 생성 */}
             {Array.from({ length: itemsPerPage - currentItems.length }).map(
               (_, i) => (
-                <tr key={`empty-row-${i}`} className="empty-row">
-                  <td colSpan={10}>&nbsp;</td>
+                <tr key={`empty-${i}`} className="empty-row">
+                  <td colSpan={13}>&nbsp;</td>
                 </tr>
               ),
             )}
@@ -538,20 +660,89 @@ const UserList = () => {
         </table>
       </div>
 
+      {/* 요약 모달 */}
       {isModalOpen && selectedSummary && (
-        <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close" onClick={closeModal}>
-              ×
-            </button>
-            <h2>내 요약 내용</h2>
-            <div className="modal-section">
+        <div className="custom-modal-overlay" onClick={closeModal}>
+          <div
+            className="custom-modal-content" // modal-content → custom-modal-content (부트스트랩 영향 제거)
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="custom-modal-header">
+              {" "}
+              <h2>요약 내용</h2>
+              <button
+                className="custom-close-btn" // modal-close → custom-close-btn
+                onClick={closeModal}
+              >
+                ×
+              </button>
+            </div>
+            <div className="custom-modal-body">
+              {" "}
               <pre className="modal-text">{selectedSummary}</pre>
             </div>
           </div>
         </div>
       )}
 
+      {/* 비밀번호 모달 */}
+      {isPasswordModalOpen &&
+        passwordDocId && ( // ← passwordDocId만 쓰지 말고 isPasswordModalOpen && 로 복구
+          <div
+            className="modal-overlay password-modal-overlay"
+            onClick={() => setIsPasswordModalOpen(false)} // ← overlay 클릭 시 모달 닫기
+          >
+            <div
+              className="modal-content password-modal-content"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                className="modal-close password-modal-close"
+                onClick={() => {
+                  setPasswordInput("");
+                  setPasswordDocId(null);
+                  setIsPasswordModalOpen(false); // ← 여기 추가 (필수!)
+                }}
+              >
+                ×
+              </button>
+              <h2>비밀번호 입력</h2>
+              <p>중요 문서입니다. 4자리 비밀번호를 입력하세요.</p>
+              <input
+                type="password"
+                maxLength={4}
+                value={passwordInput}
+                onChange={(e) =>
+                  setPasswordInput(e.target.value.replace(/\D/g, ""))
+                }
+                placeholder="••••"
+                autoFocus
+                tabIndex={1}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault(); // 기본 엔터 동작 방지 (폼 제출 등)
+                    handlePasswordSubmit(); // 엔터 누르면 확인 버튼과 똑같이 동작
+                  }
+                }}
+              />
+
+              <button
+                onClick={handlePasswordSubmit}
+                style={{
+                  padding: "10px 20px",
+                  background: "#3b82f6",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "6px",
+                }}
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        )}
+
+      {/* 페이지네이션 */}
       <div className="list-bottom-bar">
         <div className="pagination-left">
           <div className="my-summary-indicator">
@@ -568,7 +759,6 @@ const UserList = () => {
           >
             &lt;
           </button>
-
           {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
             <button
               key={page}
@@ -578,7 +768,6 @@ const UserList = () => {
               {page}
             </button>
           ))}
-
           <button
             className="page-arrow"
             onClick={() => goToPage(currentPage + 1)}
@@ -603,7 +792,7 @@ const UserList = () => {
             <option value={50}>50</option>
             <option value={100}>100</option>
           </select>
-          건 표시
+          건 표시 | 총 <strong>{filteredData.length.toLocaleString()}</strong>건
         </div>
       </div>
 

@@ -24,6 +24,11 @@ const MyPage = () => {
   const [currentPassword, setCurrentPassword] = useState("");
   const [editLoading, setEditLoading] = useState(false);
   
+  // ===== [추가] 회원 관리 모달 상태[규호] =====
+  const [showUserManagementModal, setShowUserManagementModal] = useState(false);
+  const [allUsers, setAllUsers] = useState([]);
+  const [userManagementLoading, setUserManagementLoading] = useState(false);
+  
   // ===== [추가] 상세보기 모달 상태 =====
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState(null);
@@ -35,6 +40,9 @@ const MyPage = () => {
   const [editingFileName, setEditingFileName] = useState("");
   const [editingExtractedText, setEditingExtractedText] = useState("");
   const [editingSummary, setEditingSummary] = useState("");
+  // ===== [추가] 중요 문서 및 비밀번호 상태 =====
+  const [editingIsImportant, setEditingIsImportant] = useState(false);
+  const [editingDocPassword, setEditingDocPassword] = useState("");
 
   // ===== [추가] 페이지네이션 상태 =====
   const [currentPage, setCurrentPage] = useState(1);
@@ -116,7 +124,12 @@ const MyPage = () => {
               summary: doc.summary,
               // ===== [추가] 편집/삭제 가능 여부 (관리자 또는 본인) =====
               canEdit: true,  // 실제로는 뒤에서 권한 확인
-              extracted_text: doc.extracted_text
+              extracted_text: doc.extracted_text,
+              // ===== [추가] 공개/비공개 및 중요 문서 정보 =====
+              is_public: String(doc.is_public) === 'true' || String(doc.is_public) === '1',
+              is_important: doc.is_important === true || String(doc.is_important) === '1',
+              // ===== [추가] 작성자 정보 (관리자용) =====
+              user: doc.user || null
             }));
             setHistory(formattedHistory);
             console.log(`✅ ${formattedHistory.length}개 문서 로드됨`);
@@ -200,6 +213,55 @@ const MyPage = () => {
     }
   };
 
+  // ===== [추가] 회원 관리 모달 열기 =====
+  const handleOpenUserManagement = async () => {
+    setUserManagementLoading(true);
+    try {
+      const response = await fetch("http://localhost:8000/auth/users");
+      if (response.ok) {
+        const users = await response.json();
+        setAllUsers(users);
+        setShowUserManagementModal(true);
+      } else {
+        alert("회원 목록을 불러올 수 없습니다.");
+      }
+    } catch (error) {
+      console.error("회원 목록 조회 에러:", error);
+      alert("회원 목록을 불러올 수 없습니다.");
+    } finally {
+      setUserManagementLoading(false);
+    }
+  };
+
+  // ===== [추가] 회원 삭제 함수 =====
+  const handleDeleteUser = async (userId, username) => {
+    if (!window.confirm(`정말 사용자 '${username}'을(를) 삭제하시겠습니까?`)) {
+      return;
+    }
+
+    try {
+      const userDbId = localStorage.getItem("userDbId");
+      const formData = new FormData();
+      formData.append("admin_user_id", userDbId);
+
+      const response = await fetch(`http://localhost:8000/auth/users/${userId}`, {
+        method: "DELETE",
+        body: formData
+      });
+
+      if (response.ok) {
+        alert("사용자가 삭제되었습니다.");
+        setAllUsers(allUsers.filter(u => u.id !== userId));
+      } else {
+        const error = await response.json();
+        alert(error.detail || "회원 삭제 실패");
+      }
+    } catch (error) {
+      console.error("회원 삭제 에러:", error);
+      alert("회원 삭제 중 오류가 발생했습니다.");
+    }
+  };
+
   // ===== [추가] 문서상세보기 함수 =====
   const handleViewDocument = async (doc) => {
     try {
@@ -244,6 +306,9 @@ const MyPage = () => {
         setEditingFileName(doc.filename || "");
         setEditingExtractedText(doc.extracted_text || "");
         setEditingSummary(doc.summary || "");
+        // ===== [추가] 중요 문서 여부 및 기존 비밀번호 로드 =====
+        setEditingIsImportant(doc.is_important || false);
+        setEditingDocPassword(doc.password || "");
         setShowSummaryEditModal(true);
       } else {
         alert("문서 정보를 불러올 수 없습니다.");
@@ -254,9 +319,17 @@ const MyPage = () => {
     }
   };
 
-  // ===== [수정] 문서 정보 저장 함수 - 파일명, 원문, 요약 모두 저장 =====
-  // ===== [수정] 문서 정보 저장 함수 - 파일명, 원문, 요약 모두 저장 =====
+  // ===== [수정] 문서 정보 저장 함수 - 파일명, 원문, 요약, 비밀번호 모두 저장 =====
   const handleSaveSummary = async () => {
+    // 중요 문서일 경우 비밀번호 자릿수 체크
+    if (
+      editingIsImportant &&
+      (editingDocPassword.length !== 4 || !/^\d+$/.test(editingDocPassword))
+    ) {
+      alert("중요 문서는 숫자 4자리 비밀번호가 필요합니다.");
+      return;
+    }
+
     try {
       const userDbId = localStorage.getItem("userDbId");
       
@@ -268,11 +341,13 @@ const MyPage = () => {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            user_id: userDbId,
-            // ===== [수정] 파일명, 원문, 요약 모두 전송 =====
+            user_id: parseInt(userDbId),
+            // ===== [수정] 파일명, 원문, 요약, 비밀번호 정보 모두 전송 =====
             filename: editingFileName,
             extracted_text: editingExtractedText,
-            summary: editingSummary
+            summary: editingSummary,
+            is_important: editingIsImportant,
+            password: editingIsImportant ? editingDocPassword : null
           })
         }
       );
@@ -287,7 +362,8 @@ const MyPage = () => {
                   ...doc, 
                   fileName: editingFileName,
                   extracted_text: editingExtractedText,
-                  summary: editingSummary 
+                  summary: editingSummary,
+                  is_important: editingIsImportant
                 }
               : doc
           )
@@ -298,6 +374,8 @@ const MyPage = () => {
         setEditingFileName("");
         setEditingExtractedText("");
         setEditingSummary("");
+        setEditingIsImportant(false);
+        setEditingDocPassword("");
       } else {
         const error = await response.json();
         alert(error.detail || "문서 수정 실패");
@@ -308,7 +386,7 @@ const MyPage = () => {
     }
   };
 
-  // ===== [추가] 문서 삭제 함수 =====
+  // ===== [추가] 문서 삭제 함수 (일반 유저 및 관리자 공용) =====
   const handleDeleteDocument = async (docId, fileName) => {
     if (!window.confirm(`"${fileName}"을(를) 삭제하시겠습니까?`)) {
       return;
@@ -333,7 +411,8 @@ const MyPage = () => {
         setHistory(prev => prev.filter(doc => doc.id !== docId));
         alert("문서가 성공적으로 삭제되었습니다.");
       } else {
-        alert("문서 삭제 실패");
+        const error = await response.json();
+        alert(error.detail || "문서 삭제 실패");
       }
     } catch (error) {
       console.error("문서 삭제 에러:", error);
@@ -341,35 +420,35 @@ const MyPage = () => {
     }
   };
 
-  // ===== [추가] 관리자 문서 삭제 함수 =====
-  const handleAdminDeleteDocument = async (docId, fileName) => {
-    if (!window.confirm(`[관리자] "${fileName}"을(를) 삭제하시겠습니까?`)) {
-      return;
-    }
-    
+  // ===== [수정] 관리자 문서 삭제 함수 (제거됨 - handleDeleteDocument 통합) =====
+
+  // ===== [추가] 공개/비공개 토글 함수 =====
+  const handleTogglePublic = async (item) => {
+    const newPublicStatus = !item.is_public;
+    const userDbId = localStorage.getItem("userDbId");
+
     try {
-      const userDbId = localStorage.getItem("userDbId");
-      
       const response = await fetch(
-        `http://localhost:8000/api/admin/documents/${docId}`,
+        `http://localhost:8000/api/document/${item.id}/public`,
         {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded"
-          },
-          body: `user_id=${userDbId}`
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: parseInt(userDbId),
+            is_public: newPublicStatus ? 1 : 0
+          })
         }
       );
-      
+
       if (response.ok) {
-        setHistory(prev => prev.filter(doc => doc.id !== docId));
-        alert("문서가 성공적으로 삭제되었습니다.");
-      } else {
-        alert("문서 삭제 실패");
+        setHistory((prevHistory) =>
+          prevHistory.map((doc) =>
+            doc.id === item.id ? { ...doc, is_public: newPublicStatus } : doc
+          )
+        );
       }
     } catch (error) {
-      console.error("관리자 문서 삭제 에러:", error);
-      alert("문서 삭제 중 오류가 발생했습니다.");
+      console.error("토글 에러:", error);
     }
   };
 
@@ -423,16 +502,26 @@ const MyPage = () => {
               <span className="stat-value">{history.length}건</span>
             </div>
           </div>
-          {/* ===== [추가] 프로필 수정 버튼 클릭 시 모달 표시 ===== */}
-          <button 
-            className="edit-btn"
-            onClick={() => {
-              setShowEditModal(true);
-              setEditEmail(userInfo.email);
-            }}
-          >
-            프로필 수정
-          </button>
+          {/* ===== [수정] 관리자는 회원관리, 일반 사용자는 프로필 수정 ===== */}
+          {userInfo.role === 'admin' ? (
+            <button 
+              className="edit-btn"
+              onClick={handleOpenUserManagement}
+              style={{ backgroundColor: '#ff9500' }}
+            >
+              👥 회원관리
+            </button>
+          ) : (
+            <button 
+              className="edit-btn"
+              onClick={() => {
+                setShowEditModal(true);
+                setEditEmail(userInfo.email);
+              }}
+            >
+              프로필 수정
+            </button>
+          )}
           <button className="delete-account-btn" onClick={handleDeleteAccount}>
             회원 탈퇴
           </button>
@@ -450,6 +539,8 @@ const MyPage = () => {
                 <tr>
                   <th>날짜</th>
                   <th>파일명</th>
+                  {/* ===== [추가] 관리자일 때 작성자 컬럼 표시 ===== */}
+                  {userInfo.role === 'admin' && <th>작성자</th>}
                   <th>모델</th>
                   <th>상태</th>
                   <th>관리</th>
@@ -463,11 +554,24 @@ const MyPage = () => {
                       {/* ===== [수정] 파일명 제대로 표시: title로 전체명 보기 가능, 긴 파일명은 말줄임표 =====*/}
                       <td className="file-name-cell" title={item.fileName}>
                         <span className="filename-text">{item.fileName}</span>
+                        {/* ===== [추가] 중요 문서 아이콘 표시 ===== */}
+                        {item.is_important && (
+                          <span title="중요 문서(비밀번호 설정)">🔒</span>
+                        )}
                       </td>
+                      {/* ===== [추가] 관리자일 때 작성자 정보 표시 ===== */}
+                      {userInfo.role === 'admin' && (
+                        <td>
+                          <div style={{ fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <div style={{ fontWeight: 'bold' }}>{item.user?.full_name || '알수없음'}</div>
+                            <div style={{ color: '#666' }}>@{item.user?.username || '-'}</div>
+                          </div>
+                        </td>
+                      )}
                       <td><span className="model-tag">{item.model}</span></td>
                       <td><span className="status-badge">{item.status}</span></td>
                       <td>
-                        {/* ===== [추가] 보기, 편집, 삭제 버튼 ===== */}
+                        {/* ===== [추가] 보기, 편집, 공개/비공개, 삭제 버튼 ===== */}
                         <button 
                           className="action-btn view"
                           onClick={() => handleViewDocument(item)}
@@ -480,28 +584,26 @@ const MyPage = () => {
                         >
                           편집
                         </button>
-                        {/* ===== [추가] 관리자는 관리자 삭제, 일반 유저는 일반 삭제 ===== */}
-                        {userInfo.role === 'admin' ? (
-                          <button 
-                            className="action-btn delete"
-                            onClick={() => handleAdminDeleteDocument(item.id, item.fileName)}
-                          >
-                            삭제
-                          </button>
-                        ) : (
-                          <button 
-                            className="action-btn delete"
-                            onClick={() => handleDeleteDocument(item.id, item.fileName)}
-                          >
-                            삭제
-                          </button>
-                        )}
+                        {/* ===== [추가] 공개/비공개 토글 버튼 ===== */}
+                        <button
+                          className={`action-btn ${item.is_public ? "public" : "private"}`}
+                          onClick={() => handleTogglePublic(item)}
+                        >
+                          {item.is_public ? "🌐 공개" : "🔒 비공개"}
+                        </button>
+                        {/* ===== [수정] 일반 유저와 관리자 모두 동일한 삭제 함수 사용 ===== */}
+                        <button 
+                          className="action-btn delete"
+                          onClick={() => handleDeleteDocument(item.id, item.fileName)}
+                        >
+                          삭제
+                        </button>
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="5" style={{ textAlign: 'center', padding: '20px' }}>
+                    <td colSpan={userInfo.role === 'admin' ? 6 : 5} style={{ textAlign: 'center', padding: '20px' }}>
                       히스토리가 없습니다.
                     </td>
                   </tr>
@@ -660,7 +762,7 @@ const MyPage = () => {
         </div>
       )}
 
-      {/* ===== [수정] 문서 편집 모달 - 파일명, 원문, 요약 모두 수정 가능 ===== */}
+      {/* ===== [수정] 문서 편집 모달 - 파일명, 원문, 요약, 비밀번호 모두 수정 가능 ===== */}
       {showSummaryEditModal && (
         <div className="modal-overlay" onClick={() => setShowSummaryEditModal(false)}>
           <div className="modal-content modal-lg" onClick={(e) => e.stopPropagation()}>
@@ -677,6 +779,73 @@ const MyPage = () => {
                   className="form-input"
                 />
               </div>
+
+              {/* ===== [추가] 중요 문서 설정 체크박스 ===== */}
+              <div
+                className="form-group"
+                style={{
+                  marginBottom: "15px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px"
+                }}
+              >
+                <label
+                  style={{
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    margin: 0
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={editingIsImportant}
+                    onChange={(e) => {
+                      setEditingIsImportant(e.target.checked);
+                      if (!e.target.checked) setEditingDocPassword(""); // 해제 시 비번 초기화
+                    }}
+                    style={{
+                      width: "18px",
+                      height: "18px",
+                      marginRight: "8px"
+                    }}
+                  />
+                  🔒 이 문서를 중요 문서로 설정 (비밀번호 보호)
+                </label>
+              </div>
+
+              {/* ===== [추가] 중요 문서 체크 시에만 비밀번호 입력란 표시 ===== */}
+              {editingIsImportant && (
+                <div
+                  className="form-group password-edit-box"
+                  style={{
+                    backgroundColor: "#fff5f5",
+                    padding: "12px",
+                    borderRadius: "8px",
+                    border: "1px solid #feb2b2",
+                    marginBottom: "15px"
+                  }}
+                >
+                  <label style={{ color: "#c53030", fontWeight: "bold", display: "block", marginBottom: "5px" }}>
+                    설정할 비밀번호 (숫자 4자리)
+                  </label>
+                  <input
+                    type="text"
+                    maxLength="4"
+                    value={editingDocPassword}
+                    onChange={(e) =>
+                      setEditingDocPassword(
+                        e.target.value.replace(/[^0-9]/g, "")
+                      )
+                    }
+                    placeholder="비밀번호 4자리 입력"
+                    className="form-input"
+                    style={{ border: "1px solid #fc8181", marginTop: "5px" }}
+                  />
+                </div>
+              )}
 
               {/* ===== [추가] 원문 입력 필드 ===== */}
               <div className="form-group">
@@ -714,6 +883,97 @@ const MyPage = () => {
                 onClick={handleSaveSummary}
               >
                 저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== [추가] 회원 관리 모달 ===== */}
+      {showUserManagementModal && (
+        <div className="modal-overlay" onClick={() => setShowUserManagementModal(false)}>
+          <div 
+            className="modal-content modal-lg" 
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '90vw', width: '90vw', maxHeight: '90vh', overflow: 'auto' }}
+          >
+            <div className="modal-header">
+              <h2>👥 회원 관리</h2>
+              <button 
+                className="close-btn" 
+                onClick={() => setShowUserManagementModal(false)}
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="modal-body" style={{ maxHeight: 'none', overflow: 'auto' }}>
+              {userManagementLoading ? (
+                <p>로딩 중...</p>
+              ) : allUsers.length === 0 ? (
+                <p>등록된 사용자가 없습니다.</p>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#f0f0f0', borderBottom: '2px solid #ddd' }}>
+                      <th style={{ padding: '10px', textAlign: 'left' }}>사용자명</th>
+                      <th style={{ padding: '10px', textAlign: 'left' }}>이메일</th>
+                      <th style={{ padding: '10px', textAlign: 'left' }}>역할</th>
+                      <th style={{ padding: '10px', textAlign: 'left' }}>가입일</th>
+                      <th style={{ padding: '10px', textAlign: 'center' }}>작업</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allUsers.map((user) => (
+                      <tr key={user.id} style={{ borderBottom: '1px solid #ddd' }}>
+                        <td style={{ padding: '10px' }}>
+                          <strong>{user.full_name}</strong><br/>
+                          <small style={{ color: '#666' }}>@{user.username}</small>
+                        </td>
+                        <td style={{ padding: '10px' }}>{user.email}</td>
+                        <td style={{ padding: '10px' }}>
+                          <span style={{ 
+                            backgroundColor: user.role === 'admin' ? '#ff9500' : '#ccc',
+                            color: 'white',
+                            padding: '4px 8px',
+                            borderRadius: '4px',
+                            fontSize: '12px'
+                          }}>
+                            {user.role === 'admin' ? '관리자' : '사용자'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px' }}>
+                          {user.created_at ? user.created_at.split(' ')[0] : '-'}
+                        </td>
+                        <td style={{ padding: '10px', textAlign: 'center' }}>
+                          <button 
+                            onClick={() => handleDeleteUser(user.id, user.username)}
+                            style={{
+                              backgroundColor: '#ff5252',
+                              color: 'white',
+                              border: 'none',
+                              padding: '6px 12px',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontSize: '12px'
+                            }}
+                          >
+                            삭제
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="modal-footer">
+              <button 
+                className="btn-cancel"
+                onClick={() => setShowUserManagementModal(false)}
+              >
+                닫기
               </button>
             </div>
           </div>

@@ -206,3 +206,35 @@ def get_active_session(db, session_token: str):
         UserSession.is_active == True,
         UserSession.expires_at > datetime.now()
     ).first()
+
+# 관리자 활동 로그 기록 함수[규호]
+def log_admin_activity(db, admin_user_id: int, action: str, target_type: str = None, target_id: int = None, details: str = None, ip_address: str = None):
+    """
+    관리자 활동 로그 기록
+    
+    Args:
+        db: 데이터베이스 세션
+        admin_user_id: 관리자 사용자 ID
+        action: 수행한 작업 (예: 'USER_CREATED', 'PASSWORD_CHANGED', 'DOCUMENT_DELETED', 'USER_LOGIN', 'USER_LOGOUT')
+        target_type: 대상 타입 (예: 'USER', 'DOCUMENT')
+        target_id: 대상 ID
+        details: 추가 상세 정보 (JSON 문자열 권장)
+        ip_address: 관리자의 IP 주소
+    """
+    try:
+        log_entry = AdminActivityLog(
+            admin_user_id=admin_user_id,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            details=details,
+            ip_address=ip_address,
+            created_at=datetime.datetime.now()
+        )
+        db.add(log_entry)
+        db.commit()
+        print(f"✅ 관리자 활동 로그 기록: {action} by User#{admin_user_id}")
+    except Exception as e:
+        db.rollback()
+        print(f"⚠️ 로그 기록 실패: {str(e)}")
+

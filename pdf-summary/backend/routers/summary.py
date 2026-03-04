@@ -1,18 +1,35 @@
 # summary.py 전체 코드 (권한 체크 추가 + 디버깅 로그 유지)
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Body  # [정재훈] 2026-03-02 추가: Body 임포트
+from pydantic import BaseModel
+from typing import Optional
 from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload  # [재훈] 2026-03-01 추가: joinedload 임포트
 from sqlalchemy import text
+from sqlalchemy import text, or_   # [정재훈] 2026-03-04 추가: UserList 다운로드 시 공개문서도 허용하기 위한 or_
 from urllib.parse import quote
+import json
 from services.pdf_service import extract_text_from_pdf
-from services.ai_service import summarize_text, get_available_models, translate_to_english
-from database import get_db, PdfDocument, get_user_documents, can_user_access_document , User # [정재훈 ] 2026-03-02 추가 : User
+from services.ai_service import summarize_text, get_available_models, translate_to_english, categorize_document
+from database import get_db, PdfDocument, get_user_documents, can_user_access_document , User, log_admin_activity # [정재훈 ] 2026-03-02 추가 : User
 import datetime
 import time
 import io  # [정재훈] 2026-03-02 추가: CSV 생성용 io
 import csv  # [정재훈] 2026-03-02 추가: CSV 작성용 csv
 
 router = APIRouter()
+
+
+# ────────────────────────────────────────────────────────────────
+# Pydantic 모델 정의
+# ────────────────────────────────────────────────────────────────
+class DocumentUpdateRequest(BaseModel):
+    """문서 수정 요청 스키마"""
+    user_id: int
+    extracted_text: Optional[str] = None
+    summary: Optional[str] = None
+    filename: Optional[str] = None
+    is_important: bool = False
+    password: Optional[str] = None
 
 @router.post("/summarize")
 async def summarize_pdf(
@@ -77,6 +94,37 @@ async def summarize_pdf(
     db.add(doc)
     db.commit()
     db.refresh(doc)
+    
+    # ===== [추가] 문서 카테고리 자동 분류[규호] =====
+    try:
+        category_start = time.time()
+        category = await categorize_document(title=file.filename, model=model)
+        category_time = time.time() - category_start
+        
+        doc.category = category
+        db.commit()
+        print(f"✅ 문서 카테고리 분류 완료: {category} ({category_time:.2f}초)")
+    except Exception as e:
+        print(f"⚠️ 카테고리 분류 실패: {str(e)}")
+        doc.category = "기타"
+        db.commit()
+    
+    # 문서 업로드 로그 기록
+    log_admin_activity(
+        db=db,
+        admin_user_id=user_id,
+        action="DOCUMENT_UPLOADED",
+        target_type="DOCUMENT",
+        target_id=doc.id,
+        details=json.dumps({
+            "filename": file.filename,
+            "file_size_bytes": file_size,
+            "model": model,
+            "category": doc.category,
+            "is_important": is_important,
+            "is_public": is_public
+        })
+    )
 
     overall_time = time.time() - overall_start
 
@@ -87,6 +135,7 @@ async def summarize_pdf(
         "extracted_text": extracted_text,
         "summary": summary,
         "model_used": model,
+        "category": doc.category,
         "created_at": datetime.datetime.now().isoformat(),
         "is_important": doc.is_important,
         "password": doc.password,
@@ -171,6 +220,21 @@ async def translate_text(
        
         db.commit()
         db.refresh(doc)
+        
+        # 번역 로그 기록
+        log_admin_activity(
+            db=db,
+            admin_user_id=user_id,
+            action="DOCUMENT_TRANSLATED",
+            target_type="DOCUMENT",
+            target_id=document_id,
+            details=json.dumps({
+                "text_type": text_type,
+                "model": model,
+                "original_length": len(text_to_translate),
+                "translated_length": len(translated)
+            })
+        )
        
         return {
             "document_id": document_id,
@@ -198,7 +262,7 @@ async def translate_text(
 @router.get("/document/{document_id}")
 async def get_document(
     document_id: int,
-    user_id: int = Form(...),  # 사용자 ID 추가
+    user_id: int,  # Query parameter로 변경
     db: Session = Depends(get_db),
 ):
     """
@@ -229,6 +293,9 @@ async def get_document(
         "summary_time_seconds": float(doc.summary_time_seconds) if doc.summary_time_seconds else None,
         "translation_time_seconds": float(doc.translation_time_seconds) if doc.translation_time_seconds else None,
         "created_at": doc.created_at.isoformat() if doc.created_at else None,
+        "is_important": bool(doc.is_important),
+        "password": doc.password,
+        "is_public": bool(doc.is_public),
     }
 
 @router.get("/documents/{user_id}")
@@ -263,6 +330,9 @@ async def list_user_documents(
                 "extracted_text": doc.extracted_text,
                 "original_translation": doc.original_translation,
                 "summary_translation": doc.summary_translation,
+                # ===== [추가] 공개/비공개 및 중요 문서 필드 =====
+                "is_public": bool(doc.is_public),
+                "is_important": bool(doc.is_important),
             } for doc in documents[:limit]
         ],
         "total_count": len(documents),
@@ -392,79 +462,6 @@ async def get_database_status(db: Session = Depends(get_db)):
             }
         )
 
-@router.get("/admin/documents")
-async def list_all_documents(
-    page: int = 1,
-    limit: int = 10,
-    db: Session = Depends(get_db)
-):
-    """
-    모든 문서 목록 조회 (페이징)
-    """
-    try:
-        offset = (page - 1) * limit
-        
-        # [재훈] 2026-03-01 추가: joinedload로 User 정보 함께 로드 (users 테이블 JOIN)
-        # 이 한 줄로 pdf_documents.user_id → users.full_name, username 자동 매핑 가능
-        # 전체 사용자 요약 목록을 동적으로 표시하기 위한 핵심 수정
-        documents = (
-            db.query(PdfDocument)
-            .options(joinedload(PdfDocument.owner))  # User 관계 로드
-            .order_by(PdfDocument.created_at.desc())
-            .offset(offset)
-            .limit(limit)
-            .all()
-        )
-        
-        total_count = db.query(PdfDocument).count()
-        
-        return {
-            "documents": [
-                {
-                    "id": doc.id,
-                    "filename": doc.filename,
-                    "created_at": doc.created_at.isoformat() if doc.created_at else None,
-                    "char_count": doc.char_count,
-                    "model_used": doc.model_used,
-                    "translation_model": doc.translation_model,
-                    "has_original_translation": bool(doc.original_translation),
-                    "has_summary_translation": bool(doc.summary_translation),
-                    "file_size_bytes": doc.file_size_bytes,
-                    "total_pages": doc.total_pages,
-                    "successful_pages": doc.successful_pages,
-                    "processing_times": {
-                        "extraction": float(doc.extraction_time_seconds) if doc.extraction_time_seconds else None,
-                        "summary": float(doc.summary_time_seconds) if doc.summary_time_seconds else None,
-                        "translation": float(doc.translation_time_seconds) if doc.translation_time_seconds else None
-                    },
-                    # [재훈] 2026-03-01 추가: 프론트에서 사용자 이름 표시 & 강조를 위해 실제 User 정보 포함
-                    # 회원가입 추가 시마다 자동으로 새로운 사용자 이름 반영 (동적 매핑)
-                    "user": {
-                        "id": doc.owner.id if doc.owner else None,
-                        "username": doc.owner.username if doc.owner else None,
-                        "full_name": doc.owner.full_name if doc.owner else "알수없음"
-                    },
-                    # [재훈] 2026-03-01 추가: 보기 버튼 클릭 시 summary를 바로 보여주기 위해 미리 포함
-                    # 별도 상세 API 호출 없이도 요약 내용 표시 가능 (네트워크 최적화 + 동적 구현)
-                    "summary": doc.summary if doc.summary else "요약 내용이 없습니다."
-                
-                }
-                for doc in documents
-            ],
-            "pagination": {
-                "page": page,
-                "limit": limit,
-                "total_count": total_count,
-                "total_pages": (total_count + limit - 1) // limit
-            }
-        }
-       
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"문서 목록 조회 실패: {str(e)}"
-        )
-
 # ────────────────────────────────────────────────────────────────
 # [정재훈] 2026-03-02 추가: 선택된 문서 다운로드 엔드포인트 (CSV 형식)
 # ────────────────────────────────────────────────────────────────
@@ -509,14 +506,26 @@ async def download_selected_documents(
 
     print("[다운로드] 변환된 selected_ids:", selected_ids)
 
-    # 본인 문서만 조회
+       # [정재훈] 2026-03-04 추가: UserList에서 공개문서 + 본인 문서 모두 다운로드 가능하도록 OR 조건 추가 + 중요문서 마스킹
     documents = (
         db.query(PdfDocument)
         .options(joinedload(PdfDocument.owner))
         .filter(PdfDocument.id.in_(selected_ids))
-        .filter(PdfDocument.user_id == current_user.id)
+        .filter(
+            or_(
+                PdfDocument.is_public == True,
+                PdfDocument.user_id == current_user.id
+            )
+        )
         .all()
     )
+
+    # 중요문서 마스킹 처리 (기존 로직 복원)
+    for doc in documents:
+        if doc.is_important:
+            summary_content = "중요 문서: 비밀번호 필요 (스니펫 생략)"
+        else:
+            summary_content = (doc.summary or "요약 내용 없음")[:300] + ("..." if doc.summary and len(doc.summary) > 300 else "")
 
     print("[다운로드] 조회된 문서 수:", len(documents))
 
@@ -532,6 +541,12 @@ async def download_selected_documents(
     ])
     
     for doc in documents:
+        # [정재훈] 2026-03-04 추가: 중요문서 CSV 마스킹 (UserList 다운로드 확인용)
+        if doc.is_important:
+            summary_content = "중요 문서: 비밀번호 필요 (스니펫 생략)"
+        else:
+            summary_content = (doc.summary or "요약 내용 없음")[:300] + ("..." if doc.summary and len(doc.summary) > 300 else "")
+
         writer.writerow([
             doc.id,
             doc.filename,
@@ -540,7 +555,7 @@ async def download_selected_documents(
             doc.owner.username if doc.owner else "N/A",
             doc.model_used,
             doc.char_count,
-            (doc.summary or "요약 내용 없음")[:300] + ("..." if doc.summary and len(doc.summary) > 300 else "")
+            summary_content
         ])
     
     content = output.getvalue().encode("utf-8-sig")
@@ -578,3 +593,135 @@ async def get_current_username(
         status_code=404,
         detail="사용자를 찾을 수 없습니다."
     )
+
+
+# ────────────────────────────────────────────────────────────────
+# DELETE 엔드포인트: 문서 삭제 (일반 사용자는 본인 문서만, 관리자는 전체)
+# ────────────────────────────────────────────────────────────────
+@router.delete("/summarize/{document_id}")
+async def delete_document(
+    document_id: int,
+    user_id: int = Form(...),
+    db: Session = Depends(get_db),
+):
+    """
+    문서 삭제 엔드포인트 (사용자용)
+    - 관리자: 모든 문서 삭제 가능
+    - 일반 사용자: 본인 문서만 삭제 가능
+    """
+    # 권한 확인
+    if not can_user_access_document(db, user_id, document_id):
+        raise HTTPException(status_code=403, detail="이 문서를 삭제할 권한이 없습니다.")
+    
+    # 문서 조회
+    document = db.query(PdfDocument).filter(PdfDocument.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
+    
+    # 문서 삭제
+    db.delete(document)
+    db.commit()
+    
+    # 관리자 활동 로그 기록
+    user = db.query(User).filter(User.id == user_id).first()
+    log_admin_activity(
+        db=db,
+        admin_user_id=user_id,
+        action="DOCUMENT_DELETED",
+        target_type="DOCUMENT",
+        target_id=document_id,
+        details=json.dumps({
+            "filename": document.filename,
+            "original_user_id": document.user_id,
+            "deleted_by_admin": user.role == 'admin' if user else False
+        })
+    )
+    
+    return {"message": "문서가 삭제되었습니다.", "document_id": document_id}
+
+
+# ────────────────────────────────────────────────────────────────
+# PUT 엔드포인트: 문서 수정 (일반 사용자는 본인 문서만, 관리자는 전체)
+# ────────────────────────────────────────────────────────────────
+@router.put("/summarize/{document_id}")
+async def update_document(
+    document_id: int,
+    request: DocumentUpdateRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    문서 수정 엔드포인트 (사용자용)
+    - 관리자: 모든 문서 수정 가능
+    - 일반 사용자: 본인 문서만 수정 가능
+    
+    요청 body format:
+    {
+      "user_id": 1,
+      "extracted_text": "수정된 원문",
+      "summary": "수정된 요약",
+      "filename": "수정된파일명.pdf",
+      "is_important": false,
+      "password": null
+    }
+    """
+    # 권한 확인
+    if not can_user_access_document(db, request.user_id, document_id):
+        raise HTTPException(status_code=403, detail="이 문서를 수정할 권한이 없습니다.")
+    
+    # 문서 조회
+    document = db.query(PdfDocument).filter(PdfDocument.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
+    
+    # 필드 업데이트
+    if request.extracted_text is not None:
+        document.extracted_text = request.extracted_text
+        document.char_count = len(request.extracted_text)
+    
+    if request.summary is not None:
+        document.summary = request.summary
+    
+    if request.filename is not None:
+        document.filename = request.filename
+    
+    # 중요 문서 설정 처리
+    if request.is_important:
+        # 중요문서로 설정할 때
+        if not request.password or len(request.password) != 4 or not request.password.isdigit():
+            raise HTTPException(status_code=400, detail="중요문서는 4자리 숫자 비밀번호가 필요합니다.")
+        document.is_important = True
+        document.password = request.password
+    else:
+        # 중요문서 해제할 때
+        document.is_important = False
+        document.password = None
+    
+    document.updated_at = datetime.datetime.now()
+    db.commit()
+    db.refresh(document)
+    
+    # 관리자 활동 로그 기록
+    user = db.query(User).filter(User.id == request.user_id).first()
+    log_admin_activity(
+        db=db,
+        admin_user_id=request.user_id,
+        action="DOCUMENT_UPDATED",
+        target_type="DOCUMENT",
+        target_id=document_id,
+        details=json.dumps({
+            "filename": document.filename,
+            "updated_fields": [
+                "extracted_text" if request.extracted_text else "",
+                "summary" if request.summary else "",
+                "filename" if request.filename else ""
+            ],
+            "updated_by_admin": user.role == 'admin' if user else False
+        })
+    )
+    
+    return {
+        "message": "문서가 수정되었습니다.",
+        "document_id": document_id,
+        "updated_at": document.updated_at.isoformat(),
+        "char_count": document.char_count
+    }
