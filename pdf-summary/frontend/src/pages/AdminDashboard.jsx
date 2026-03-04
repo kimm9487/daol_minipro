@@ -1,11 +1,20 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useSessionValidator } from '../hooks/useSessionValidator';
 import './AdminDashboard.css';
 
 const AdminDashboard = () => {
+    // ===== [추가] 세션 유효성 검증 =====
+    useSessionValidator(30000); // 30초마다 세션 확인
+
+    const navigate = useNavigate();
     const API_BASE = 'http://localhost:8000/api';
+    const adminId = parseInt(localStorage.getItem('userDbId')); // 관리자 ID
     const [dbStatus, setDbStatus] = useState(null);
     const [documents, setDocuments] = useState([]);
-    const [loading, setLoading] = useState({ db: true, docs: true });
+    const [activeSessions, setActiveSessions] = useState([]);
+    const [allUsers, setAllUsers] = useState([]);
+    const [loading, setLoading] = useState({ db: true, docs: true, sessions: true, users: true });
     const [error, setError] = useState(null);
 
     // ===== [추가] 페이지네이션 상태 =====
@@ -66,9 +75,112 @@ const AdminDashboard = () => {
         }
     };
 
+    // 활성 사용자 세션 로드
+    const loadActiveSessions = async () => {
+        setLoading(prev => ({ ...prev, sessions: true }));
+        try {
+            const userId = localStorage.getItem('userDbId');
+            const response = await fetch(`http://localhost:8000/auth/admin/sessions?admin_user_id=${userId}`, {
+                cache: 'no-store'
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: 세션 조회 실패`);
+            }
+            const data = await response.json();
+            if (Array.isArray(data.sessions)) {
+                setActiveSessions(data.sessions);
+            } else {
+                console.warn('예상치 못한 응답 형식:', data);
+                setActiveSessions([]);
+            }
+        } catch (err) {
+            console.error('세션 로드 오류:', err);
+            setActiveSessions([]);
+        } finally {
+            setLoading(prev => ({ ...prev, sessions: false }));
+        }
+    };
+
+    // 강제 로그아웃
+    const handleForceLogout = async (sessionId) => {
+        if (!window.confirm('이 사용자를 강제 로그아웃하시겠습니까?')) {
+            return;
+        }
+        try {
+            const userId = localStorage.getItem('userDbId');
+            const response = await fetch(`http://localhost:8000/auth/admin/sessions/${sessionId}?admin_user_id=${userId}`, {
+                method: 'DELETE'
+            });
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.detail || `HTTP ${response.status}: 강제 로그아웃 실패`);
+            }
+            alert('해당 사용자를 강제 로그아웃했습니다.');
+            loadActiveSessions();
+        } catch (err) {
+            alert('강제 로그아웃 실패: ' + err.message);
+            console.error('강제 로그아웃 오류:', err);
+        }
+    };
+
+    // 회원 목록 로드
+    const loadAllUsers = async () => {
+        setLoading(prev => ({ ...prev, users: true }));
+        try {
+            const response = await fetch('http://localhost:8000/auth/users', {
+                cache: 'no-store'
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: 회원 목록 조회 실패`);
+            }
+            const data = await response.json();
+            if (Array.isArray(data)) {
+                // 현재 로그인한 사용자(본인) 제외
+                const currentUserId = parseInt(localStorage.getItem('userDbId'));
+                const filteredUsers = data.filter(u => u.id !== currentUserId);
+                setAllUsers(filteredUsers);
+            } else {
+                console.warn('예상치 못한 응답 형식:', data);
+                setAllUsers([]);
+            }
+        } catch (err) {
+            console.error('회원 목록 로드 오류:', err);
+            setAllUsers([]);
+        } finally {
+            setLoading(prev => ({ ...prev, users: false }));
+        }
+    };
+
+    // 회원 삭제
+    const handleDeleteUser = async (userId, username) => {
+        if (!window.confirm(`정말 사용자 '${username}'을(를) 삭제하시겠습니까?`)) {
+            return;
+        }
+        try {
+            const adminId = localStorage.getItem('userDbId');
+            const formData = new FormData();
+            formData.append('admin_user_id', adminId);
+
+            const response = await fetch(`http://localhost:8000/auth/users/${userId}`, {
+                method: 'DELETE',
+                body: formData
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: 회원 삭제 실패`);
+            }
+            alert('사용자가 삭제되었습니다.');
+            setAllUsers(allUsers.filter(u => u.id !== userId));
+        } catch (err) {
+            alert('회원 삭제 실패: ' + err.message);
+            console.error('회원 삭제 오류:', err);
+        }
+    };
+
     useEffect(() => {
         loadDatabaseStatus();
         loadDocuments();
+        loadActiveSessions();
+        loadAllUsers();
     }, []);
 
     return (
@@ -102,11 +214,115 @@ const AdminDashboard = () => {
                                 <div className="status-item">
                                     <h4>문서 통계</h4>
                                     <p>전체 문서: {dbStatus.data_statistics.total_documents}개</p>
-                                    <p>번역률: {dbStatus.data_statistics.translation_rate}</p>
                                 </div>
                             )}
                         </div>
                     ) : <div className="error">데이터를 불러올 수 없습니다.</div>}
+                </section>
+
+                {/* 활성 사용자 세션 카드 */}
+                <section className="admin-card">
+                    <div className="card-header">
+                        <span>👥 현재 로그인 중인 사용자</span>
+                        <button className="btn-refresh" onClick={loadActiveSessions}>새로고침</button>
+                    </div>
+                    {loading.sessions ? (
+                        <div className="loading">세션 목록을 불러오는 중...</div>
+                    ) : activeSessions.length === 0 ? (
+                        <div className="loading">로그인 중인 사용자가 없습니다</div>
+                    ) : (
+                        <div className="table-container">
+                            <table className="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>사용자 ID</th>
+                                        <th>사용자명</th>
+                                        <th>로그인 시간</th>
+                                        <th>IP 주소</th>
+                                        <th>장치</th>
+                                        <th>세션 만료</th>
+                                        <th>작업</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {activeSessions.map(session => (
+                                        <tr key={session.session_id}>
+                                            <td>{session.user_id}</td>
+                                            <td>{session.username}</td>
+                                            <td>{new Date(session.login_time).toLocaleString('ko-KR')}</td>
+                                            <td>{session.ip_address}</td>
+                                            <td className="device-info">{session.device}</td>
+                                            <td>{new Date(session.expires_at).toLocaleString('ko-KR')}</td>
+                                            <td>
+                                                {session.user_id === adminId ? (
+                                                    <span style={{ color: '#999', fontSize: '0.9rem' }}>본인 세션</span>
+                                                ) : (
+                                                    <button 
+                                                        className="btn-danger" 
+                                                        onClick={() => handleForceLogout(session.session_id)}
+                                                    >
+                                                        강제 로그아웃
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </section>
+
+                {/* 회원 관리 카드 */}
+                <section className="admin-card">
+                    <div className="card-header">
+                        <span>👤 회원 관리</span>
+                        <button className="btn-refresh" onClick={loadAllUsers}>새로고침</button>
+                    </div>
+                    {loading.users ? (
+                        <div className="loading">회원 목록을 불러오는 중...</div>
+                    ) : allUsers.length === 0 ? (
+                        <div className="loading">등록된 회원이 없습니다</div>
+                    ) : (
+                        <div className="table-container">
+                            <table className="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>사용자명</th>
+                                        <th>이메일</th>
+                                        <th>역할</th>
+                                        <th>가입일</th>
+                                        <th>작업</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {allUsers.map(user => (
+                                        <tr key={user.id}>
+                                            <td>
+                                                <strong>{user.full_name}</strong><br/>
+                                                <small style={{ color: '#666' }}>@{user.username}</small>
+                                            </td>
+                                            <td>{user.email}</td>
+                                            <td>
+                                                <span className={`badge ${user.role === 'admin' ? 'badge-admin' : 'badge-user'}`}>
+                                                    {user.role === 'admin' ? '관리자' : '사용자'}
+                                                </span>
+                                            </td>
+                                            <td>{user.created_at ? user.created_at.split(' ')[0] : '-'}</td>
+                                            <td>
+                                                <button 
+                                                    className="btn-danger" 
+                                                    onClick={() => handleDeleteUser(user.id, user.username)}
+                                                >
+                                                    삭제
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                 </section>
 
                 {/* 문서 목록 카드 */}

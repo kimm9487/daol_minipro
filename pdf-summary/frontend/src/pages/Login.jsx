@@ -53,6 +53,7 @@ const Login = ({ setIsLoggedIn }) => {
         localStorage.setItem("userName", data.user_name);
         localStorage.setItem("userId", data.user_id);
         localStorage.setItem("userDbId", data.user_db_id);
+        localStorage.setItem("session_token", data.session_token);
         localStorage.setItem("isLoggedIn", "true");
         if (setIsLoggedIn) setIsLoggedIn(true);
         alert(`${data.user_name}님 환영합니다!`);

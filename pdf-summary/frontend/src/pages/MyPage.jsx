@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useSessionValidator } from '../hooks/useSessionValidator';
 import './MyPage.css';
 
 const MyPage = () => {
+  // ===== [추가] 세션 유효성 검증 =====
+  useSessionValidator(30000); // 30초마다 세션 확인
+
   // ===== [추가] 상태 관리 =====
   // 사용자 프로필 정보
   const [userInfo, setUserInfo] = useState({
@@ -23,11 +27,6 @@ const MyPage = () => {
   const [editPassword, setEditPassword] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [editLoading, setEditLoading] = useState(false);
-  
-  // ===== [추가] 회원 관리 모달 상태[규호] =====
-  const [showUserManagementModal, setShowUserManagementModal] = useState(false);
-  const [allUsers, setAllUsers] = useState([]);
-  const [userManagementLoading, setUserManagementLoading] = useState(false);
   
   // ===== [추가] 상세보기 모달 상태 =====
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -210,55 +209,6 @@ const MyPage = () => {
       alert("프로필 수정 중 오류가 발생했습니다.");
     } finally {
       setEditLoading(false);
-    }
-  };
-
-  // ===== [추가] 회원 관리 모달 열기 =====
-  const handleOpenUserManagement = async () => {
-    setUserManagementLoading(true);
-    try {
-      const response = await fetch("http://localhost:8000/auth/users");
-      if (response.ok) {
-        const users = await response.json();
-        setAllUsers(users);
-        setShowUserManagementModal(true);
-      } else {
-        alert("회원 목록을 불러올 수 없습니다.");
-      }
-    } catch (error) {
-      console.error("회원 목록 조회 에러:", error);
-      alert("회원 목록을 불러올 수 없습니다.");
-    } finally {
-      setUserManagementLoading(false);
-    }
-  };
-
-  // ===== [추가] 회원 삭제 함수 =====
-  const handleDeleteUser = async (userId, username) => {
-    if (!window.confirm(`정말 사용자 '${username}'을(를) 삭제하시겠습니까?`)) {
-      return;
-    }
-
-    try {
-      const userDbId = localStorage.getItem("userDbId");
-      const formData = new FormData();
-      formData.append("admin_user_id", userDbId);
-
-      const response = await fetch(`http://localhost:8000/auth/users/${userId}`, {
-        method: "DELETE",
-        body: formData
-      });
-
-      if (response.ok) {
-        alert("사용자가 삭제되었습니다.");
-        setAllUsers(allUsers.filter(u => u.id !== userId));
-      } else {
-        const error = await response.json();
-        alert(error.detail || "회원 삭제 실패");
-      }
-    } catch (error) {
-      console.error("회원 삭제 에러:", error);
-      alert("회원 삭제 중 오류가 발생했습니다.");
     }
   };
 
@@ -502,26 +452,16 @@ const MyPage = () => {
               <span className="stat-value">{history.length}건</span>
             </div>
           </div>
-          {/* ===== [수정] 관리자는 회원관리, 일반 사용자는 프로필 수정 ===== */}
-          {userInfo.role === 'admin' ? (
-            <button 
-              className="edit-btn"
-              onClick={handleOpenUserManagement}
-              style={{ backgroundColor: '#ff9500' }}
-            >
-              👥 회원관리
-            </button>
-          ) : (
-            <button 
-              className="edit-btn"
-              onClick={() => {
-                setShowEditModal(true);
-                setEditEmail(userInfo.email);
-              }}
-            >
-              프로필 수정
-            </button>
-          )}
+          {/* ===== [수정] 프로필 수정 버튼 (관리자도 본인 프로필 수정 가능) ===== */}
+          <button 
+            className="edit-btn"
+            onClick={() => {
+              setShowEditModal(true);
+              setEditEmail(userInfo.email);
+            }}
+          >
+            프로필 수정
+          </button>
           <button className="delete-account-btn" onClick={handleDeleteAccount}>
             회원 탈퇴
           </button>
@@ -890,95 +830,6 @@ const MyPage = () => {
       )}
 
       {/* ===== [추가] 회원 관리 모달 ===== */}
-      {showUserManagementModal && (
-        <div className="modal-overlay" onClick={() => setShowUserManagementModal(false)}>
-          <div 
-            className="modal-content modal-lg" 
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '90vw', width: '90vw', maxHeight: '90vh', overflow: 'auto' }}
-          >
-            <div className="modal-header">
-              <h2>👥 회원 관리</h2>
-              <button 
-                className="close-btn" 
-                onClick={() => setShowUserManagementModal(false)}
-              >
-                ✕
-              </button>
-            </div>
-            
-            <div className="modal-body" style={{ maxHeight: 'none', overflow: 'auto' }}>
-              {userManagementLoading ? (
-                <p>로딩 중...</p>
-              ) : allUsers.length === 0 ? (
-                <p>등록된 사용자가 없습니다.</p>
-              ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ backgroundColor: '#f0f0f0', borderBottom: '2px solid #ddd' }}>
-                      <th style={{ padding: '10px', textAlign: 'left' }}>사용자명</th>
-                      <th style={{ padding: '10px', textAlign: 'left' }}>이메일</th>
-                      <th style={{ padding: '10px', textAlign: 'left' }}>역할</th>
-                      <th style={{ padding: '10px', textAlign: 'left' }}>가입일</th>
-                      <th style={{ padding: '10px', textAlign: 'center' }}>작업</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {allUsers.map((user) => (
-                      <tr key={user.id} style={{ borderBottom: '1px solid #ddd' }}>
-                        <td style={{ padding: '10px' }}>
-                          <strong>{user.full_name}</strong><br/>
-                          <small style={{ color: '#666' }}>@{user.username}</small>
-                        </td>
-                        <td style={{ padding: '10px' }}>{user.email}</td>
-                        <td style={{ padding: '10px' }}>
-                          <span style={{ 
-                            backgroundColor: user.role === 'admin' ? '#ff9500' : '#ccc',
-                            color: 'white',
-                            padding: '4px 8px',
-                            borderRadius: '4px',
-                            fontSize: '12px'
-                          }}>
-                            {user.role === 'admin' ? '관리자' : '사용자'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '10px' }}>
-                          {user.created_at ? user.created_at.split(' ')[0] : '-'}
-                        </td>
-                        <td style={{ padding: '10px', textAlign: 'center' }}>
-                          <button 
-                            onClick={() => handleDeleteUser(user.id, user.username)}
-                            style={{
-                              backgroundColor: '#ff5252',
-                              color: 'white',
-                              border: 'none',
-                              padding: '6px 12px',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              fontSize: '12px'
-                            }}
-                          >
-                            삭제
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
-            <div className="modal-footer">
-              <button 
-                className="btn-cancel"
-                onClick={() => setShowUserManagementModal(false)}
-              >
-                닫기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

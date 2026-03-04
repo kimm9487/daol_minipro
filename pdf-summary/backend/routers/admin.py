@@ -1,5 +1,6 @@
 import json
-from fastapi import APIRouter, Form, Depends, HTTPException
+import datetime
+from fastapi import APIRouter, Form, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import joinedload
 from database import get_db, User, PdfDocument, log_admin_activity
@@ -100,7 +101,12 @@ def get_all_users(db: Session = Depends(get_db)):
 
 # [회원 삭제]
 @router.delete("/auth/users/{user_id}")
-def delete_user(user_id: int, admin_user_id: int = Form(...), db: Session = Depends(get_db)):
+def delete_user(
+    user_id: int,
+    request: Request,
+    admin_user_id: int = Form(...),
+    db: Session = Depends(get_db)
+):
     """
     회원 삭제 (관리자용)
     Args:
@@ -127,7 +133,8 @@ def delete_user(user_id: int, admin_user_id: int = Form(...), db: Session = Depe
             action="USER_DELETED",
             target_type="USER",
             target_id=user_id,
-            details=json.dumps({"deleted_username": deleted_username})
+            details=json.dumps({"deleted_username": deleted_username}),
+            ip_address=request.client.host
         )
         
         return {
@@ -147,6 +154,7 @@ def delete_user(user_id: int, admin_user_id: int = Form(...), db: Session = Depe
 @router.delete("/api/admin/documents/{document_id}")
 def admin_delete_document(
     document_id: int,
+    request: Request,
     admin_user_id: int = Form(...),
     db: Session = Depends(get_db),
 ):
@@ -185,7 +193,8 @@ def admin_delete_document(
             details=json.dumps({
                 "filename": doc_filename,
                 "original_user_id": doc_owner_id
-            })
+            }),
+            ip_address=request.client.host
         )
         
         return {
@@ -206,6 +215,7 @@ def admin_delete_document(
 @router.put("/api/admin/documents/{document_id}")
 def admin_update_document(
     document_id: int,
+    request: Request,
     admin_user_id: int = Form(...),
     extracted_text: str = Form(None),
     summary: str = Form(None),
@@ -256,7 +266,8 @@ def admin_update_document(
                 "filename": document.filename,
                 "updated_fields": updated_fields,
                 "original_user_id": document.user_id
-            })
+            }),
+            ip_address=request.client.host
         )
         
         return {

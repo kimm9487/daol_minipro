@@ -1,5 +1,5 @@
 # summary.py 전체 코드 (권한 체크 추가 + 디버깅 로그 유지)
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Body  # [정재훈] 2026-03-02 추가: Body 임포트
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Body, Request  # [정재훈] 2026-03-02 추가: Body 임포트, Request 추가
 from pydantic import BaseModel
 from typing import Optional
 from fastapi.responses import Response
@@ -32,12 +32,13 @@ class DocumentUpdateRequest(BaseModel):
 
 @router.post("/summarize")
 async def summarize_pdf(
+    request: Request,
     file: UploadFile = File(...),
     user_id: int = Form(...),
     model: str = Form(default="gemma3:latest"),
-    is_important: bool = Form(default=False),  # 중요문서 여부
-    password: str = Form(default=None),  # 4자리 비밀번호
-    is_public: bool = Form(default=True),  # 공개 여부
+    is_important: bool = Form(default=False),
+    password: str = Form(default=None),
+    is_public: bool = Form(default=True),
     db: Session = Depends(get_db),
 ):
     overall_start = time.time()
@@ -122,7 +123,8 @@ async def summarize_pdf(
             "category": doc.category,
             "is_important": is_important,
             "is_public": is_public
-        })
+        }),
+        ip_address=request.client.host
     )
 
     overall_time = time.time() - overall_start
@@ -154,9 +156,10 @@ async def summarize_pdf(
 
 @router.post("/translate")
 async def translate_text(
+    request: Request,
     document_id: int = Form(...),
-    user_id: int = Form(...),  # 사용자 ID 추가
-    text_type: str = Form(...),  # "original" 또는 "summary"
+    user_id: int = Form(...),
+    text_type: str = Form(...),
     model: str = Form(default="gemma3:latest"),
     db: Session = Depends(get_db),
 ):
@@ -232,7 +235,8 @@ async def translate_text(
                 "model": model,
                 "original_length": len(text_to_translate),
                 "translated_length": len(translated)
-            })
+            }),
+            ip_address=request.client.host
         )
        
         return {
@@ -582,6 +586,7 @@ async def get_current_username(
 @router.delete("/summarize/{document_id}")
 async def delete_document(
     document_id: int,
+    request: Request,
     user_id: int = Form(...),
     db: Session = Depends(get_db),
 ):
@@ -615,7 +620,8 @@ async def delete_document(
             "filename": document.filename,
             "original_user_id": document.user_id,
             "deleted_by_admin": user.role == 'admin' if user else False
-        })
+        }),
+        ip_address=request.client.host
     )
     
     return {"message": "문서가 삭제되었습니다.", "document_id": document_id}
@@ -627,7 +633,8 @@ async def delete_document(
 @router.put("/summarize/{document_id}")
 async def update_document(
     document_id: int,
-    request: DocumentUpdateRequest,
+    http_request: Request,
+    request: DocumentUpdateRequest = Body(...),
     db: Session = Depends(get_db),
 ):
     """
@@ -697,7 +704,8 @@ async def update_document(
                 "filename" if request.filename else ""
             ],
             "updated_by_admin": user.role == 'admin' if user else False
-        })
+        }),
+        ip_address=http_request.client.host
     )
     
     return {
