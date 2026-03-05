@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useSessionValidator } from '../hooks/useSessionValidator';
 import './PdfSummary.css';
 
 const PdfSummary = () => {
+    // ===== [추가] 세션 유효성 검증 (10분 주기, 강제 로그아웃 대상은 즉시+5초) =====
+    useSessionValidator(); // 기본값 10분, 강제 로그아웃 대상이면 즉시+5초 주기로 검증
+
     console.log("📄 PdfSummary 컴포넌트 렌더링됨");
     const API_BASE = "http://localhost:8000/api";
     const navigate = useNavigate();
@@ -21,6 +25,7 @@ const PdfSummary = () => {
         original: null,
         summary: null
     });
+    const [isDragActive, setIsDragActive] = useState(false);
 
     // [추가] 중요 문서 관련 상태
     const [isImportant, setIsImportant] = useState(false);
@@ -55,14 +60,52 @@ const PdfSummary = () => {
     const handleFileChange = (e) => {
         const selectedFile = e.target.files[0];
         if (selectedFile) {
-            setFile(selectedFile);
-            setFileName(selectedFile.name);
-            setStatus({ type: '', msg: '' });
-            setResult(null);
-            // [추가] 파일 선택 시 중요문서 관련 상태 초기화
-            setIsImportant(false);
-            setDocumentPassword("");
-            setIsPublic(true);
+            processFile(selectedFile);
+        }
+    };
+
+    // [추가] 파일 처리 공통 함수
+    const processFile = (selectedFile) => {
+        // PDF 파일만 허용
+        if (!selectedFile.type.includes('pdf')) {
+            setStatus({ type: 'error', msg: 'PDF 파일만 선택해주세요.' });
+            return;
+        }
+
+        setFile(selectedFile);
+        setFileName(selectedFile.name);
+        setStatus({ type: '', msg: '' });
+        setResult(null);
+        // [추가] 파일 선택 시 중요문서 관련 상태 초기화
+        setIsImportant(false);
+        setDocumentPassword("");
+        setIsPublic(true);
+    };
+
+    // [추가] 드래그 오버 이벤트
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragActive(true);
+    };
+
+    // [추가] 드래그 리브 이벤트
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragActive(false);
+    };
+
+    // [추가] 드롭 이벤트
+    const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragActive(false);
+
+        const droppedFiles = e.dataTransfer.files;
+        if (droppedFiles.length > 0) {
+            const droppedFile = droppedFiles[0];
+            processFile(droppedFile);
         }
     };
 
@@ -214,7 +257,10 @@ const PdfSummary = () => {
                     </div>
                 </div>
 
-                <div className="upload-row">
+                <div className={`upload-row ${isDragActive ? 'drag-active' : ''}`}
+                     onDragOver={handleDragOver}
+                     onDragLeave={handleDragLeave}
+                     onDrop={handleDrop}>
                     <label className={`file-label ${file ? 'has-file' : ''}`}>
                         <input type="file" onChange={handleFileChange} accept=".pdf" style={{ display: 'none' }} />
                         <svg className="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

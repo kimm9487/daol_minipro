@@ -1,8 +1,10 @@
 import bcrypt
 import json
-from fastapi import APIRouter, Form, Depends, HTTPException
+import uuid
+import datetime
+from fastapi import APIRouter, Form, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from database import Base, engine, get_db, User, log_admin_activity
+from database import Base, engine, get_db, User, UserSession, log_admin_activity
 
 router = APIRouter()
 
@@ -33,6 +35,7 @@ def get_current_user_id(user_id: str = Form(...)) -> str:
 # [회원가입]
 @router.post("/auth/register")
 def register(
+    request: Request,
     user_id: str = Form(...), 
     user_pw: str = Form(...), 
     user_name: str = Form(...), 
@@ -60,17 +63,46 @@ def register(
         action="USER_REGISTERED",
         target_type="USER",
         target_id=new_user.id,
-        details=json.dumps({"username": user_id, "email": user_email})
+        details=json.dumps({"username": user_id, "email": user_email}),
+        ip_address=request.client.host
     )
     
     return {"message": "회원가입이 완료되었습니다."}
 
 # [로그인]
 @router.post("/auth/login")
-def login(user_id: str = Form(...), user_pw: str = Form(...), db: Session = Depends(get_db)):
+def login(request: Request, user_id: str = Form(...), user_pw: str = Form(...), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == user_id).first()
     if not user or not verify_password(user_pw, user.password_hash):
         raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 틀렸습니다.")
+    
+    # ===== [추가] 동시 로그인 제한: 기존 활성 세션 종료 =====
+    existing_sessions = db.query(UserSession).filter(
+        UserSession.user_id == user.id,
+        UserSession.is_active == True
+    ).all()
+    
+    for session in existing_sessions:
+        session.is_active = False
+    db.commit()
+    
+    # ===== [추가] 새 세션 생성 =====
+    session_token = str(uuid.uuid4())
+    ip_address = request.client.host if request else "unknown"
+    user_agent = request.headers.get("user-agent", "") if request else ""
+    
+    new_session = UserSession(
+        user_id=user.id,
+        session_token=session_token,
+        created_at=datetime.datetime.now(),
+        expires_at=datetime.datetime.now() + datetime.timedelta(days=30),  # 30일 만료
+        is_active=True,
+        ip_address=ip_address,
+        user_agent=user_agent
+    )
+    db.add(new_session)
+    db.commit()
+    db.refresh(new_session)
     
     # 로그인 로그 기록
     log_admin_activity(
@@ -79,14 +111,16 @@ def login(user_id: str = Form(...), user_pw: str = Form(...), db: Session = Depe
         action="USER_LOGIN",
         target_type="USER",
         target_id=user.id,
-        details=json.dumps({"username": user.username})
+        details=json.dumps({"username": user.username, "ip_address": ip_address}),
+        ip_address=ip_address
     )
     
     return {
         "message": "로그인 성공",
         "user_name": user.full_name,
         "user_id": user.username,
-        "user_db_id": user.id  # DB에서 사용할 실제 ID 추가
+        "user_db_id": user.id,
+        "session_token": session_token  # 클라이언트에 토큰 전달
     }
 
 # [아이디 중복 확인]
@@ -134,9 +168,10 @@ def get_user_profile(user_db_id: int, db: Session = Depends(get_db)):
 @router.put("/auth/profile/{user_db_id}")
 def update_user_profile(
     user_db_id: int,
+    request: Request,
     email: str = Form(None),
     new_password: str = Form(None),
-    current_password: str = Form(...),  # 비밀번호 변경 시 현재 비밀번호 확인
+    current_password: str = Form(...),
     db: Session = Depends(get_db)
 ):
     """
@@ -187,7 +222,8 @@ def update_user_profile(
         action="PROFILE_UPDATED",
         target_type="USER",
         target_id=user_db_id,
-        details=json.dumps({"changes": changes})
+        details=json.dumps({"changes": changes}),
+        ip_address=request.client.host
     )
     
     return {

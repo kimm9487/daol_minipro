@@ -9,6 +9,7 @@ from database import Base, engine, get_db
 
 # 분할된 라우터들 임포트
 from routers.auth import router as auth_router
+from routers.sessions import router as sessions_router
 from routers.admin import router as admin_router
 from routers.history import router as history_router
 from routers.summary import router as summary_router
@@ -42,6 +43,9 @@ app.add_middleware(
 # --- 라우터 등록 ---
 # 1. 인증 및 계정 관리 (회원가입, 로그인, 프로필)
 app.include_router(auth_router)
+
+# 1-1. 세션 관리 (로그인 이력, 강제 로그아웃 등)
+app.include_router(sessions_router)
 
 # 2. 계정 찾기 (이메일 인증)
 app.include_router(find_account_router)
