@@ -33,6 +33,7 @@ const UserList = () => {
   // [재훈] 2026-03-01 추가: 요약 보기 모달
   const [selectedSummary, setSelectedSummary] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState(null); // 전체 문서 객체 (extracted_text 포함)
 
   // [재훈] 2026-03-03 추가: 중요문서 비밀번호 모달
   const [passwordInput, setPasswordInput] = useState("");
@@ -97,6 +98,7 @@ const UserList = () => {
             charCount: doc.char_count ? doc.char_count.toLocaleString() : "0",
             status: "완료",
             summary: doc.summary || "요약 내용이 없습니다.",
+            extracted_text: doc.extracted_text || "",
             sortDate: createdDate,
             isPublic: doc.is_public ?? true,
             isImportant: doc.is_important ?? false,
@@ -140,7 +142,7 @@ const UserList = () => {
   // 테이블 상단에 컬럼 정의 배열 만들기
   const columns = [
     { key: null, label: "선택", width: "40px", sortable: false },
-    { key: null, label: "#", sortable: false },
+    { key: "id", label: "#", sortable: true },
     { key: "datetime", label: "날짜 / 시간", sortable: true },
     { key: "username", label: "ID", sortable: true },
     { key: "fullName", label: "사용자", sortable: true },
@@ -260,36 +262,30 @@ const UserList = () => {
       return;
     }
 
-    // 여기까지 왔으면 관리자이거나 볼 수 있는 문서임
-    if (doc.isImportant) {
-      // 중요 문서 → 패스워드 모달 열기
-      // 관리자일 때는 비밀번호 없이 바로 요약 볼 수 있게 하거나,
-      // 관리자도 비밀번호 입력하도록 둘 중 선택 가능
+    // 전체 문서 객체 저장 (extracted_text 포함)
+    setSelectedDoc(doc);
+    setSelectedSummary(doc.summary); // 기존 요약 상태도 유지
 
-      // 옵션 1: 관리자는 비밀번호 없이 바로 보기 (추천)
+    if (doc.isImportant) {
       if (isAdmin) {
-        setSelectedSummary(doc.summary);
         setIsModalOpen(true);
         return;
       }
-
-      // 옵션 2: 관리자도 비밀번호 입력하게 하려면 아래 그대로 두기
       setPasswordDocId(doc.id);
       setPasswordInput("");
       setIsPasswordModalOpen(true);
     } else {
-      // 일반 문서 → 바로 요약 모달
-      setSelectedSummary(doc.summary);
       setIsModalOpen(true);
     }
   };
-  //handlePasswordSubmit – 관리자라면 무조건 통과 (안전장치)
+
+  // 비밀번호 제출 성공 시에도 전체 doc 저장
   const handlePasswordSubmit = () => {
     const doc = data.find((item) => item.id === passwordDocId);
     if (!doc) return;
 
-    // ★ 관리자라면 비밀번호 상관없이 통과 ★
     if (isAdmin || doc.password === passwordInput) {
+      setSelectedDoc(doc); // ← 여기 추가 (전체 객체 저장)
       setSelectedSummary(doc.summary);
       setIsModalOpen(true);
       setIsPasswordModalOpen(false);
@@ -545,24 +541,30 @@ const UserList = () => {
                       }
                       onChange={(e) => {
                         if (e.target.checked) {
+                          // 현재 필터링된 행 중 아직 선택 안 된 것들만 추가
                           const newlySelected = filteredData
                             .filter(
                               (item) =>
                                 !selectedItems.includes(Number(item.id)),
                             )
                             .map((item) => Number(item.id));
-                          setSelectedItems((prev) => [
-                            ...prev,
-                            ...newlySelected,
-                          ]);
+                          setSelectedItems((prev) => {
+                            const updated = [...prev, ...newlySelected];
+                            return [...new Set(updated)]; // 중복 제거 (안전)
+                          });
                         } else {
-                          setSelectedItems([]); // 전체 해제
+                          // 현재 필터링된 행만 해제 (전체 지우지 않음)
+                          const currentPageIds = new Set(
+                            filteredData.map((item) => Number(item.id)),
+                          );
+                          setSelectedItems((prev) =>
+                            prev.filter((id) => !currentPageIds.has(id)),
+                          );
                         }
                       }}
                       disabled={filteredData.length === 0}
                     />
                   )}
-
                   {col.label}
 
                   {col.sortable && (
@@ -680,25 +682,39 @@ const UserList = () => {
       </div>
 
       {/* 요약 모달 */}
-      {isModalOpen && selectedSummary && (
+      {isModalOpen && selectedDoc && (
         <div className="custom-modal-overlay" onClick={closeModal}>
           <div
-            className="custom-modal-content" // modal-content → custom-modal-content (부트스트랩 영향 제거)
+            className="custom-modal-content"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="custom-modal-header">
-              {" "}
-              <h2>요약 내용</h2>
-              <button
-                className="custom-close-btn" // modal-close → custom-close-btn
-                onClick={closeModal}
-              >
+              <h2>문서 상세 내용</h2>
+              <button className="custom-close-btn" onClick={closeModal}>
                 ×
               </button>
             </div>
+
             <div className="custom-modal-body">
-              {" "}
-              <pre className="modal-text">{selectedSummary}</pre>
+              <div className="document-detail-container">
+                {/* 원본 섹션 */}
+                <section className="section-original">
+                  <h3 className="section-title">원본 추출 텍스트</h3>
+                  <pre className="modal-text modal-original-text">
+                    {selectedDoc.extracted_text || "원본 텍스트가 없습니다."}
+                  </pre>
+                </section>
+
+                <hr className="section-divider" />
+
+                {/* 요약 섹션 */}
+                <section className="section-summary">
+                  <h3 className="section-title">AI 요약 내용</h3>
+                  <pre className="modal-text modal-summary-text">
+                    {selectedDoc.summary || "요약 내용이 없습니다."}
+                  </pre>
+                </section>
+              </div>
             </div>
           </div>
         </div>
