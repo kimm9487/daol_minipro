@@ -40,7 +40,7 @@ const UserList = () => {
   const [passwordDocId, setPasswordDocId] = useState(null);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false); // ← 이 줄 추가
   // [정재훈] 2026-03-02 추가: 정렬 상태
-  const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
+  const [sortConfig, setSortConfig] = useState({ key: "id", direction: "asc" });
 
   // [재훈] 2026-03-03 추가: 동적 모델 목록 (전체 모델 필터 옵션)
   const [availableModels, setAvailableModels] = useState(["전체 모델"]);
@@ -304,11 +304,40 @@ const UserList = () => {
     setIsPasswordModalOpen(false);
   };
 
+  //정렬 key 값
   const requestSort = (key) => {
+    if (!key) return;
+
     let direction = "asc";
-    if (sortConfig.key === key && sortConfig.direction === "asc")
-      direction = "desc";
+
+    if (sortConfig.key === key) {
+      // 같은 컬럼 다시 클릭하면 방향 반전
+      direction = sortConfig.direction === "asc" ? "desc" : "asc";
+    } else {
+      // ==================== 컬럼별 첫 클릭 방향 정의 ====================
+      switch (key) {
+        case "id": // #
+          direction = "asc"; // 작은 수부터
+          break;
+        case "charCount": // 원문자수
+          direction = "desc"; // 큰 수부터
+          break;
+        case "isImportant": // 중요
+          direction = "desc"; // 중요(true) 먼저
+          break;
+        case "datetime": // 날짜/시간
+          direction = "desc"; // 최신순부터
+          break;
+        case "isPublic": // 공개여부
+          direction = "desc"; // 공개 먼저
+          break;
+        default:
+          direction = "asc"; // 나머지 (사용자, 파일명, 모델, 분류 등)는 오름차순
+      }
+    }
+
     setSortConfig({ key, direction });
+    setSortOption("");
     setCurrentPage(1);
   };
 
@@ -380,26 +409,60 @@ const UserList = () => {
     );
   }
 
+  // ==================== 정렬 로직 ====================
   if (sortConfig.key) {
     filteredData.sort((a, b) => {
-      const aValue = a[sortConfig.key];
-      const bValue = b[sortConfig.key];
-      if (sortConfig.key === "datetime") {
-        const dateA = new Date(a.sortDate || a.datetime);
-        const dateB = new Date(b.sortDate || b.datetime);
-        return sortConfig.direction === "asc" ? dateA - dateB : dateB - dateA;
+      const key = sortConfig.key;
+      const dir = sortConfig.direction;
+
+      // ID
+      if (key === "id") {
+        return dir === "asc"
+          ? (Number(a.id) || 0) - (Number(b.id) || 0)
+          : (Number(b.id) || 0) - (Number(a.id) || 0);
       }
+
+      // 원문자수
+      if (key === "charCount") {
+        const aCount = Number(String(a.charCount).replace(/[^0-9]/g, "")) || 0;
+        const bCount = Number(String(b.charCount).replace(/[^0-9]/g, "")) || 0;
+        return dir === "asc" ? aCount - bCount : bCount - aCount;
+      }
+
+      // 중요도
+      if (key === "isImportant") {
+        const aImp = a.isImportant === true ? 1 : 0;
+        const bImp = b.isImportant === true ? 1 : 0;
+        if (aImp !== bImp) {
+          return dir === "desc" ? bImp - aImp : aImp - bImp;
+        }
+        return (Number(a.id) || 0) - (Number(b.id) || 0);
+      }
+
+      // 날짜
+      if (key === "datetime") {
+        const dateA = new Date(a.sortDate || a.datetime || 0);
+        const dateB = new Date(b.sortDate || b.datetime || 0);
+        return dir === "asc" ? dateA - dateB : dateB - dateA;
+      }
+
+      // 일반 숫자
+      const aValue = a[key];
+      const bValue = b[key];
       if (typeof aValue === "number" && typeof bValue === "number") {
-        return sortConfig.direction === "asc"
-          ? aValue - bValue
-          : bValue - aValue;
+        return dir === "asc" ? aValue - bValue : bValue - aValue;
       }
+
+      // 문자열 (기본)
       const strA = String(aValue || "").toLowerCase();
       const strB = String(bValue || "").toLowerCase();
-      return sortConfig.direction === "asc"
+      return dir === "asc"
         ? strA.localeCompare(strB)
         : strB.localeCompare(strA);
     });
+  } else {
+    // 초기 로드 시 ID 작은 수부터
+    filteredData.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
   }
 
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
@@ -709,7 +772,7 @@ const UserList = () => {
 
                 {/* 요약 섹션 */}
                 <section className="section-summary">
-                  <h3 className="section-title">AI 요약 내용</h3>
+                  <h3 className="section-title">요약 내용</h3>
                   <pre className="modal-text modal-summary-text">
                     {selectedDoc.summary || "요약 내용이 없습니다."}
                   </pre>
