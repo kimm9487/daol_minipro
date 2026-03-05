@@ -2,7 +2,8 @@ import httpx
 from fastapi import HTTPException
 
 # Ollama 기본 설정
-OLLAMA_BASE_URL = "http://localhost:11434"
+#OLLAMA_BASE_URL = "http://localhost:11434"
+OLLAMA_BASE_URL = "http://host.docker.internal:11434"  #Docker로 실행시 코드수정 필요 //이재윤
 DEFAULT_MODEL = "gemma3:latest"  
 
 
