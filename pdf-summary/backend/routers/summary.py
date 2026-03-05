@@ -462,9 +462,6 @@ async def get_database_status(db: Session = Depends(get_db)):
             }
         )
 
-# ────────────────────────────────────────────────────────────────
-# [정재훈] 2026-03-02 추가: 선택된 문서 다운로드 엔드포인트 (CSV 형식)
-# ────────────────────────────────────────────────────────────────
 @router.post("/admin/download-selected")
 async def download_selected_documents(
     body: dict = Body(...),
@@ -473,65 +470,63 @@ async def download_selected_documents(
     print("[다운로드 요청] 전체 body:", body)
 
     selected_ids = body.get("selected_ids", [])
-    username = body.get("user_id")  # 프론트에서 보내는 그대로 받음
-
-    print("[다운로드] 받은 selected_ids:", selected_ids)
-    print("[다운로드] 받은 username:", username)
+    user_id = body.get("user_id")   # ← 프론트에서 숫자 ID로 받음
 
     if not selected_ids:
         raise HTTPException(status_code=400, detail="선택된 항목이 없습니다.")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id가 필요합니다.")
 
-    if not username:
-        raise HTTPException(status_code=401, detail="사용자 ID가 필요합니다.")
+    # 사용자 조회 (ID로 직접 조회 → 안정적)
+    try:
+        user_id = int(user_id)
+    except:
+        raise HTTPException(status_code=400, detail="user_id는 숫자여야 합니다.")
 
-    # ────────────────────────────────────────────────────────────────
-    # [정재훈] 2026-03-02 임시 매핑 제거 (다른 계정 테스트 가능하게)
-    # 기존 하드코딩 부분 주석 처리 또는 삭제
-    # known_mapping = { ... }  ← 이 부분 주석 처리하거나 지우기
-    # if username in known_mapping: ... ← 이 if 블록 전체 주석 처리
-    # ────────────────────────────────────────────────────────────────
-
-    # 현재 사용자 정보 조회 (username으로) ← 그대로 유지
-    current_user = db.query(User).filter(User.username == username).first()
+    current_user = db.query(User).filter(User.id == user_id).first()
     if not current_user:
-        raise HTTPException(status_code=401, detail="사용자가 존재하지 않습니다.")
+        raise HTTPException(status_code=401, detail="사용자를 찾을 수 없습니다.")
 
-    print("[다운로드] 조회된 사용자:", current_user.username, "ID:", current_user.id)
+    is_admin = getattr(current_user, 'role', None) and current_user.role.lower() == 'admin'
+    print(f"[다운로드] 사용자 ID: {user_id} | 관리자: {is_admin} | 선택 ID: {selected_ids}")
 
-    # ID 리스트 안전 변환 (숫자만)
+    # ID 리스트 안전 변환
     try:
         selected_ids = [int(str(i)) for i in selected_ids if str(i).isdigit()]
     except:
         raise HTTPException(status_code=400, detail="문서 ID는 숫자 리스트여야 합니다.")
 
-    print("[다운로드] 변환된 selected_ids:", selected_ids)
-
-       # [정재훈] 2026-03-04 추가: UserList에서 공개문서 + 본인 문서 모두 다운로드 가능하도록 OR 조건 추가 + 중요문서 마스킹
-    documents = (
-        db.query(PdfDocument)
-        .options(joinedload(PdfDocument.owner))
-        .filter(PdfDocument.id.in_(selected_ids))
-        .filter(
-            or_(
-                PdfDocument.is_public == True,
-                PdfDocument.user_id == current_user.id
-            )
+    # ==================== 핵심 권한 분기 ====================
+    if is_admin:
+        # 관리자는 모든 문서 허용
+        documents = (
+            db.query(PdfDocument)
+            .options(joinedload(PdfDocument.owner))
+            .filter(PdfDocument.id.in_(selected_ids))
+            .all()
         )
-        .all()
-    )
-
-    # 중요문서 마스킹 처리 (기존 로직 복원)
-    for doc in documents:
-        if doc.is_important:
-            summary_content = "중요 문서: 비밀번호 필요 (스니펫 생략)"
-        else:
-            summary_content = (doc.summary or "요약 내용 없음")[:300] + ("..." if doc.summary and len(doc.summary) > 300 else "")
-
-    print("[다운로드] 조회된 문서 수:", len(documents))
+        print(f"[관리자 다운로드] {len(documents)}개 문서 조회 완료")
+    else:
+        # 일반 유저는 공개 + 본인 문서만
+        documents = (
+            db.query(PdfDocument)
+            .options(joinedload(PdfDocument.owner))
+            .filter(PdfDocument.id.in_(selected_ids))
+            .filter(
+                or_(
+                    PdfDocument.is_public == True,
+                    PdfDocument.user_id == current_user.id
+                )
+            )
+            .all()
+        )
+        print(f"[일반유저 다운로드] 권한 있는 {len(documents)}개 문서 조회")
+    # ======================================================
 
     if not documents:
         raise HTTPException(status_code=403, detail="선택한 문서에 접근 권한이 없습니다.")
-    # CSV 생성 (기존 그대로)
+
+    # ==================== CSV 생성 (기존 그대로) ====================
     output = io.StringIO()
     writer = csv.writer(output)
     
@@ -541,7 +536,6 @@ async def download_selected_documents(
     ])
     
     for doc in documents:
-        # [정재훈] 2026-03-04 추가: 중요문서 CSV 마스킹 (UserList 다운로드 확인용)
         if doc.is_important:
             summary_content = "중요 문서: 비밀번호 필요 (스니펫 생략)"
         else:
@@ -551,16 +545,15 @@ async def download_selected_documents(
             doc.id,
             doc.filename,
             doc.created_at.isoformat() if doc.created_at else "없음",
-            doc.owner.full_name if doc.owner else "알수없음",
-            doc.owner.username if doc.owner else "N/A",
+            doc.owner.full_name if getattr(doc, 'owner', None) and hasattr(doc.owner, 'full_name') else "알수없음",
+            doc.owner.username if getattr(doc, 'owner', None) else "N/A",
             doc.model_used,
             doc.char_count,
             summary_content
         ])
     
     content = output.getvalue().encode("utf-8-sig")
-    
-    safe_filename = quote(f"{username}_선택_요약목록.csv")
+    safe_filename = quote(f"{current_user.username}_선택_요약목록.csv")
     
     return Response(
         content=content,

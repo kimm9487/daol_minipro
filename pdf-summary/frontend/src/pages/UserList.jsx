@@ -189,7 +189,7 @@ const UserList = () => {
       return newSelection;
     });
   };
-
+  // 문서 다운로드
   const handleDownload = async () => {
     if (selectedItems.length === 0) {
       alert("다운로드할 항목을 선택하세요.");
@@ -199,37 +199,19 @@ const UserList = () => {
     const safeSelectedIds = selectedItems
       .map(Number)
       .filter((id) => !isNaN(id) && id > 0);
-    const selectedDocs = data.filter((item) =>
-      safeSelectedIds.includes(Number(item.id)),
-    );
-    const hasImportant = selectedDocs.some((doc) => doc.isImportant);
+
+    const hasImportant = data
+      .filter((item) => safeSelectedIds.includes(Number(item.id)))
+      .some((doc) => doc.isImportant);
 
     if (hasImportant) {
       const confirm = window.confirm(
-        "선택한 항목 중 중요 문서가 포함되어 있습니다.\n" +
-          "CSV 파일에는 요약 내용의 처음 300자만 포함되며,\n" +
-          "전체 내용은 '보기' 버튼으로 비밀번호를 입력해야 확인할 수 있습니다.\n\n" +
-          "그래도 다운로드하시겠습니까?",
+        "중요 문서가 포함되어 있습니다.\nCSV에는 요약 스니펫만 포함됩니다.\n그래도 다운로드하시겠습니까?",
       );
-      if (!confirm) {
-        return; // 사용자가 취소하면 여기서 함수 종료
-      }
+      if (!confirm) return;
     }
 
     try {
-      let sendUserId = currentUser;
-      const usernameRes = await fetch(
-        "http://localhost:8000/api/admin/current-username",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: `user_id=${encodeURIComponent(currentUser)}`,
-        },
-      );
-      if (usernameRes.ok) {
-        const data = await usernameRes.json();
-        sendUserId = data.username;
-      }
       const response = await fetch(
         "http://localhost:8000/api/admin/download-selected",
         {
@@ -237,28 +219,33 @@ const UserList = () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             selected_ids: safeSelectedIds,
-            user_id: sendUserId,
+            user_id: currentUserId, // ← 숫자 ID 직접 전송 (가장 중요!)
           }),
         },
       );
+
       if (!response.ok) {
         const errText = await response.text();
         throw new Error(`다운로드 실패: ${response.status} - ${errText}`);
       }
+
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${sendUserId}_선택_요약목록.csv`;
+      a.download = `${currentUser}_선택_요약목록.csv`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+
+      console.log("✅ CSV 다운로드 성공");
     } catch (err) {
       console.error("다운로드 오류:", err);
-      alert("다운로드 중 오류가 발생했습니다.\n" + err.message);
+      alert("다운로드 실패: " + err.message);
     }
   };
+
   //handleViewClick – 중요 문서 부분에 관리자 예외
   const handleViewClick = (docId) => {
     const doc = data.find((item) => item.id === docId);
@@ -546,7 +533,38 @@ const UserList = () => {
                     col.sortable ? () => requestSort(col.key) : undefined
                   }
                 >
+                  {/* 첫 번째 컬럼(선택)일 때만 체크박스 추가 */}
+                  {index === 0 && (
+                    <input
+                      type="checkbox"
+                      checked={
+                        filteredData.length > 0 &&
+                        filteredData.every((item) =>
+                          selectedItems.includes(Number(item.id)),
+                        )
+                      }
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          const newlySelected = filteredData
+                            .filter(
+                              (item) =>
+                                !selectedItems.includes(Number(item.id)),
+                            )
+                            .map((item) => Number(item.id));
+                          setSelectedItems((prev) => [
+                            ...prev,
+                            ...newlySelected,
+                          ]);
+                        } else {
+                          setSelectedItems([]); // 전체 해제
+                        }
+                      }}
+                      disabled={filteredData.length === 0}
+                    />
+                  )}
+
                   {col.label}
+
                   {col.sortable && (
                     <span
                       className={`sort-icon ${sortConfig.key === col.key ? sortConfig.direction : "none"}`}
@@ -562,6 +580,7 @@ const UserList = () => {
               ))}
             </tr>
           </thead>
+
           <tbody>
             {currentItems.map((item) => (
               <tr key={item.id} className={isMyDocument(item) ? "my-item" : ""}>
