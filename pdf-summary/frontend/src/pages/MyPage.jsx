@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useSessionValidator } from '../hooks/useSessionValidator';
 import { useLogout } from '../hooks/useLogout';
-import './MyPage.css';
+import { buildApiUrl } from '../config/api';
+import './Mypage.css';
 
 const MyPage = () => {
   // ===== [추가] 세션 유효성 검증 (10분 주기, 강제 로그아웃 대상은 즉시+5초) =====
@@ -83,13 +84,10 @@ const MyPage = () => {
         }
         
         // 프로필 정보 조회
-        console.log(`📡 프로필 조회: http://localhost:8000/auth/profile/${userDbId}`);
+        console.log(`📡 프로필 조회: ${buildApiUrl(`/auth/profile/${userDbId}`)}`);
         const profileResponse = await fetch(
-          `http://localhost:8000/auth/profile/${userDbId}`,
-          { 
-            cache: 'no-store',
-            credentials: 'include'
-          }
+          buildApiUrl(`/auth/profile/${userDbId}`),
+          { cache: 'no-store' }
         );
         
         console.log('📊 프로필 응답:', profileResponse.status);
@@ -109,16 +107,15 @@ const MyPage = () => {
         let historyUrl;
         if (userRole === 'admin') {
           // 관리자: 모든 문서 조회
-          historyUrl = `http://localhost:8000/api/admin/documents?limit=1000`;
+          historyUrl = buildApiUrl('/api/admin/documents?limit=1000');
         } else {
           // 일반 유저: 본인 문서만 조회
-          historyUrl = `http://localhost:8000/api/documents/${userDbId}?limit=1000`;
+          historyUrl = buildApiUrl(`/api/documents/${userDbId}?limit=1000`);
         }
         
         console.log(`📡 히스토리 조회: ${historyUrl}`);
         const historyResponse = await fetch(historyUrl, {
-          cache: 'no-store',
-          credentials: 'include'
+          cache: 'no-store'
         });
         
         console.log('📊 히스토리 응답:', historyResponse.status);
@@ -197,7 +194,7 @@ const MyPage = () => {
       formData.append("current_password", currentPassword);
       
       const response = await fetch(
-        `http://localhost:8000/auth/profile/${userDbId}`,
+        buildApiUrl(`/auth/profile/${userDbId}`),
         {
           method: "PUT",
           body: formData
@@ -233,7 +230,7 @@ const MyPage = () => {
       
       // ===== [수정] GET 요청이므로 쿼리 파라미터로 user_id 전달 =====
       const response = await fetch(
-        `http://localhost:8000/api/document/${doc.id}?user_id=${userDbId}`,
+        buildApiUrl(`/api/document/${doc.id}?user_id=${userDbId}`),
         {
           method: "GET"
         }
@@ -260,7 +257,7 @@ const MyPage = () => {
       
       // ===== [추가] DB에서 최신 전체 데이터 조회 =====
       const response = await fetch(
-        `http://localhost:8000/api/document/${docId}?user_id=${userDbId}`,
+        buildApiUrl(`/api/document/${docId}?user_id=${userDbId}`),
         { method: "GET" }
       );
       
@@ -298,7 +295,7 @@ const MyPage = () => {
       const userDbId = localStorage.getItem("userDbId");
       
       const response = await fetch(
-        `http://localhost:8000/api/summarize/${editingDocId}`,
+        buildApiUrl(`/api/summarize/${editingDocId}`),
         {
           method: "PUT",
           headers: {
@@ -360,7 +357,7 @@ const MyPage = () => {
       const userDbId = localStorage.getItem("userDbId");
       
       const response = await fetch(
-        `http://localhost:8000/api/summarize/${docId}`,
+        buildApiUrl(`/api/summarize/${docId}`),
         {
           method: "DELETE",
           headers: {
@@ -393,7 +390,7 @@ const MyPage = () => {
 
     try {
       const response = await fetch(
-        `http://localhost:8000/api/document/${item.id}/public`,
+        buildApiUrl(`/api/document/${item.id}/public`),
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -420,7 +417,7 @@ const MyPage = () => {
     if (window.confirm("정말로 탈퇴하시겠습니까? 모든 히스토리가 삭제됩니다.")) {
       try {
         const userId = localStorage.getItem("userId");
-        const response = await fetch(`http://localhost:8000/auth/withdraw/${userId}`, {
+        const response = await fetch(buildApiUrl(`/auth/withdraw/${userId}`), {
           method: "DELETE",
         });
 
