@@ -1,4 +1,10 @@
+
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
+from sqlalchemy.dialects.mysql import LONGTEXT, DECIMAL  # ← 여기 추가!
+from sqlalchemy import BigInteger   # ← 여기 추가!
+
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, DECIMAL, BigInteger, Boolean, Enum, ForeignKey
+
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import sessionmaker, relationship
@@ -13,7 +19,7 @@ load_dotenv()
 DB_HOST     = os.getenv("DB_HOST", "localhost")
 DB_PORT     = os.getenv("DB_PORT", "3306")
 DB_USER     = os.getenv("DB_USER", "root")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "9487")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "1234")
 DB_NAME     = os.getenv("DB_NAME", "pdf_summary")
 
 # SQLAlchemy 연결 URL
@@ -82,14 +88,34 @@ class AdminActivityLog(Base):
 class PdfDocument(Base):
     __tablename__ = "pdf_documents"
 
+
+    id = Column(Integer, primary_key=True, index=True)
+
     # 기본 필드
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)  # 추가됨
+
     filename = Column(String(255), nullable=False)
     extracted_text = Column(LONGTEXT)
     summary = Column(LONGTEXT)
     model_used = Column(String(100))
     char_count = Column(Integer, default=0)
+
+
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    
+    # [재훈] 2026-02-26 
+    # 컬럼 추가
+    original_translation = Column(LONGTEXT)
+    summary_translation = Column(LONGTEXT)
+    translation_model = Column(String(100))
+    extraction_time_seconds = Column(DECIMAL(10, 3))
+    summary_time_seconds = Column(DECIMAL(10, 3))
+    translation_time_seconds = Column(DECIMAL(10, 3))
+    file_size_bytes = Column(BigInteger)
+    total_pages = Column(Integer)
+    successful_pages = Column(Integer)
+
     created_at = Column(DateTime, default=datetime.datetime.now, index=True)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)  # 추가됨
     
@@ -118,6 +144,7 @@ class PdfDocument(Base):
     
     # 관계 설정
     owner = relationship("User", back_populates="documents")
+
 
 
 

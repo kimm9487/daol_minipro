@@ -119,8 +119,12 @@ def login(request: Request, user_id: str = Form(...), user_pw: str = Form(...), 
         "message": "로그인 성공",
         "user_name": user.full_name,
         "user_id": user.username,
+<<<<<<< HEAD
         "user_db_id": user.id,
         "session_token": session_token  # 클라이언트에 토큰 전달
+=======
+        "user_db_id": user.id, # DB에서 사용할 실제 ID 추가
+>>>>>>> e3f0575dd46c79ee545ecbdf190da4440afabce6
     }
 
 # [아이디 중복 확인]

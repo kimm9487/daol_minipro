@@ -1,0 +1,9 @@
+from sqlalchemy.dialects.mysql import LONGTEXT, DECIMAL
+from sqlalchemy import BigInteger
+
+
+database 에 컬럼 추가 
+
+
+
+python insert_jaehun.py

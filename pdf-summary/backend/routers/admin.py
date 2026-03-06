@@ -67,6 +67,9 @@ def get_admin_documents(
                     # ===== [추가] 공개/비공개 및 중요 문서 필드 =====
                     "is_public": bool(doc.is_public),
                     "is_important": bool(doc.is_important),
+                    # [정재훈] 2026-03-04 추가: UserList 필터(분류) + 중요문서 비밀번호 모달 완성을 위해 category, password 반환
+                    "category": doc.category or "기타",
+                    "password": doc.password if getattr(doc, 'is_important', False) else None,
                 }
                 for doc in documents
             ],

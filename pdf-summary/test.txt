@@ -1,0 +1,90 @@
+# 1. 최신 main 브랜치 가져오기
+git checkout main
+git pull origin main
+
+# 2. Git 사용자 정보 확인 (처음이라면 설정)
+git config --global user.name "jaehun"
+git config --global user.email "jaehun@example.com"   # 본인 이메일로 변경
+
+# 확인
+git config --global --list
+
+# 3. 현재 브랜치 목록 확인 (jaehun 브랜치가 있는지)
+git branch -vv
+
+# 4. 필요하면 .gitignore 파일 확인/생성 (이미 있을 가능성 높음)
+# 예: __pycache__/, .env, venv/ 등 무시할 항목들
+
+
+
+# 1. 작업 시작 전 main 최신화 (항상!)
+git checkout main
+git pull origin main
+
+# 2. 새 브랜치 만들기 (또는 기존 jaehun 브랜치 사용)
+git checkout -b jaehun-new-feature   # 새로 만들 때
+# 또는 이미 있는 jaehun 브랜치로 이동
+git checkout jaehun
+
+# 3. 개발 & 커밋 (작게 자주 하는 게 좋음)
+# ... 코드 수정 ...
+git add .
+git commit -m "feat: PDF 요약 페이지 레이아웃 개선"
+git commit -m "fix: Ollama 응답 처리 에러 수정"   # 여러 번 OK
+
+# 4. 브랜치 push (처음이면 -u 붙이기)
+git push -u origin jaehun
+# 이후부터는 그냥
+git push
+
+# 5. GitHub 웹에서 Pull Request(PR) 생성
+# → https://github.com/kimm9487/daol_minipro/compare/jaehun?expand=1
+# base: main ← compare: jaehun
+# 제목: [jaehun] feat: PDF 요약 기능 추가
+# 설명에 스크린샷, 변경 내용 적기 → Create pull request
+
+# 6. PR 승인 & merge 후 로컬 정리 (선택)
+git checkout main
+git pull origin main
+git branch -d jaehun   # 로컬 브랜치 삭제 (필요 없으면)
+
+
+
+
+
+
+# 1. main 최신화
+git checkout main
+git pull origin main
+
+# 2. jaehun으로 이동
+git checkout jaehun
+
+# 3. main 최신 내용 jaehun에 반영 (충돌 대비)
+git merge main
+
+# 4. 작업 시작!
+# ... 코드 수정 ...
+git add .
+git commit -m "feat: PDF 요약 결과 표시 컴포넌트 추가"
+
+# 5. push
+git push
+
+# 6. PR 올리기 (브라우저에서)
+
+
+# 1. 환경 활성화
+conda activate tfod
+
+# 2. 백엔드 폴더 이동
+cd /d D:\프로젝트\daol-minipro\pdf-summary\backend
+
+# 3. 서버 실행
+uvicorn main:app --reload --port 8000
+
+# 4. (별도 창) Ollama 확인 (이미 켜져 있으면 생략)
+ollama serve   # 또는 이미 켜져 있으면 curl http://localhost:11434 로 확인만
+
+# 5. UI 열기
+# 탐색기 → D:\프로젝트\daol-minipro\pdf-summary\frontend\index.html 더블클릭

@@ -9,6 +9,7 @@ import "./UserList.css";
 // 메인 컴포넌트 : 전체 요약 목록 페이지
 // ────────────────────────────────────────────────────────────────
 const UserList = () => {
+<<<<<<< HEAD
 
   const navigate = useNavigate();
 
@@ -31,6 +32,8 @@ const UserList = () => {
       }
     }, []); // 마운트할 때 한 번만 실행
   
+=======
+>>>>>>> e3f0575dd46c79ee545ecbdf190da4440afabce6
   const currentUser = localStorage.getItem("userName");
   const currentUserIdStr = localStorage.getItem("userDbId");
   const currentUserId = currentUserIdStr ? Number(currentUserIdStr) : null;

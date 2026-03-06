@@ -396,7 +396,7 @@
 
 .summary-textarea:focus {
   outline: none;
-  border-color: #3498db;
+  border-color: #050708;
   box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
 }
 
