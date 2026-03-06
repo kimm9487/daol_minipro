@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSessionValidator } from '../hooks/useSessionValidator';
 import { useLogout } from '../hooks/useLogout';
+import { API_BASE } from '../config/api';
 import './PdfSummary.css';
 
 const PdfSummary = () => {
@@ -11,7 +12,6 @@ const PdfSummary = () => {
     useSessionValidator(); // 기본값 10분, 강제 로그아웃 대상이면 즉시+5초 주기로 검증
 
     console.log("📄 PdfSummary 컴포넌트 렌더링됨");
-    const API_BASE = "http://localhost:8000/api";
 
     // ===== [추가] 로그인 정보 확인 =====
     const handleLogout = useLogout(null, { showAlert: false });
@@ -168,7 +168,7 @@ const PdfSummary = () => {
             setStatus({ type: '', msg: '' });
         } catch (err) {
             console.error("Fetch Error:", err);
-            setStatus({ type: 'error', msg: "서버에 연결할 수 없습니다. 백엔드(localhost:8000)를 확인해주세요. 에러: " + err.message });
+            setStatus({ type: 'error', msg: "서버에 연결할 수 없습니다. 백엔드 API 주소를 확인해주세요. 에러: " + err.message });
         } finally {
             setLoading(false);
         }
