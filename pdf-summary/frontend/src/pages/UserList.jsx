@@ -276,7 +276,7 @@ const UserList = () => {
       console.log("✅ 다운로드 성공");
       alert(
         hasImportant
-          ? "ZIP 파일 다운로드 완료!\n중요 문서는 ID 번호를 비밀번호로 사용하세요."
+          ? "ZIP 파일 다운로드 완료!\n중요 문서는  입력한 4자리 번호를 비밀번호로 사용하세요."
           : "CSV 파일 다운로드 완료!",
       );
     } catch (err) {
