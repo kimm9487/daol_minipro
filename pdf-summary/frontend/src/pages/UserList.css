@@ -241,6 +241,7 @@ h2 {
   border-bottom: 1px solid #eee;
   font-size: 14px;
   position: relative;
+  word-break: break-all;        /* 영어 긴 단어도 강제 줄바꿈 */
 }
 
 /* 내 요약 항목 강조 */
