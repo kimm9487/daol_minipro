@@ -15,10 +15,6 @@ from routers.history import router as history_router
 from routers.summary import router as summary_router
 from routers.find_account import router as find_account_router
 from routers.is_public import router as is_public_router
-<<<<<<< HEAD
-=======
-# [추가] 2025-03-05 정재훈 - download.py 라우터 추가
->>>>>>> e3f0575dd46c79ee545ecbdf190da4440afabce6
 from routers.download import router as download_router
 
 # --- 1. DB 모델 정의 ---
@@ -81,11 +77,7 @@ app.include_router(history_router)
 # 6. 관리자 전용 기능
 app.include_router(admin_router)
 
-<<<<<<< HEAD
 # 7. 선택 문서 다운로드 (CSV/ZIP)
-=======
-# 2025-03-05 정재훈 - zip-download 
->>>>>>> e3f0575dd46c79ee545ecbdf190da4440afabce6
 app.include_router(download_router)
 
 
