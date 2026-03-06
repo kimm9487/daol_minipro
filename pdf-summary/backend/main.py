@@ -13,6 +13,8 @@ from routers.history import router as history_router
 from routers.summary import router as summary_router
 from routers.find_account import router as find_account_router
 from routers.is_public import router as is_public_router
+# [추가] 2025-03-05 정재훈 - download.py 라우터 추가
+from routers.download import router as download_router
 
 # --- 1. DB 모델 정의 ---
 # User 모델은 database.py에서 가져옴
@@ -56,6 +58,9 @@ app.include_router(history_router)
 
 # 6. 관리자 전용 기능
 app.include_router(admin_router)
+
+# 2025-03-05 정재훈 - zip-download 
+app.include_router(download_router)
 
 
 
