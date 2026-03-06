@@ -3,7 +3,7 @@ from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, B
 from pydantic import BaseModel
 from typing import Optional
 from fastapi.responses import Response
-from sqlalchemy.orm import Session, joinedload  # [재훈] 2026-03-01 추가: joinedload 임포트
+from sqlalchemy.orm import Session
 from sqlalchemy import text
 from urllib.parse import quote
 import json
@@ -12,8 +12,6 @@ from services.ai_service import summarize_text, get_available_models, translate_
 from database import get_db, PdfDocument, get_user_documents, can_user_access_document , User, log_admin_activity # [정재훈 ] 2026-03-02 추가 : User
 import datetime
 import time
-import io  # [정재훈] 2026-03-02 추가: CSV 생성용 io
-import csv  # [정재훈] 2026-03-02 추가: CSV 작성용 csv
 
 router = APIRouter()
 
@@ -464,94 +462,6 @@ async def get_database_status(db: Session = Depends(get_db)):
                 "message": str(e)
             }
         )
-
-# ────────────────────────────────────────────────────────────────
-# [정재훈] 2026-03-02 추가: 선택된 문서 다운로드 엔드포인트 (CSV 형식)
-# ────────────────────────────────────────────────────────────────
-@router.post("/admin/download-selected")
-async def download_selected_documents(
-    body: dict = Body(...),
-    db: Session = Depends(get_db)
-):
-    print("[다운로드 요청] 전체 body:", body)
-
-    selected_ids = body.get("selected_ids", [])
-    username = body.get("user_id")  # 프론트에서 보내는 그대로 받음
-
-    print("[다운로드] 받은 selected_ids:", selected_ids)
-    print("[다운로드] 받은 username:", username)
-
-    if not selected_ids:
-        raise HTTPException(status_code=400, detail="선택된 항목이 없습니다.")
-
-    if not username:
-        raise HTTPException(status_code=401, detail="사용자 ID가 필요합니다.")
-
-    # ────────────────────────────────────────────────────────────────
-    # [정재훈] 2026-03-02 임시 매핑 제거 (다른 계정 테스트 가능하게)
-    # 기존 하드코딩 부분 주석 처리 또는 삭제
-    # known_mapping = { ... }  ← 이 부분 주석 처리하거나 지우기
-    # if username in known_mapping: ... ← 이 if 블록 전체 주석 처리
-    # ────────────────────────────────────────────────────────────────
-
-    # 현재 사용자 정보 조회 (username으로) ← 그대로 유지
-    current_user = db.query(User).filter(User.username == username).first()
-    if not current_user:
-        raise HTTPException(status_code=401, detail="사용자가 존재하지 않습니다.")
-
-    print("[다운로드] 조회된 사용자:", current_user.username, "ID:", current_user.id)
-
-    # ID 리스트 안전 변환 (숫자만)
-    try:
-        selected_ids = [int(str(i)) for i in selected_ids if str(i).isdigit()]
-    except:
-        raise HTTPException(status_code=400, detail="문서 ID는 숫자 리스트여야 합니다.")
-
-    print("[다운로드] 변환된 selected_ids:", selected_ids)
-
-    # 본인 문서만 조회
-    documents = (
-        db.query(PdfDocument)
-        .options(joinedload(PdfDocument.owner))
-        .filter(PdfDocument.id.in_(selected_ids))
-        .filter(PdfDocument.user_id == current_user.id)
-        .all()
-    )
-
-    print("[다운로드] 조회된 문서 수:", len(documents))
-
-    if not documents:
-        raise HTTPException(status_code=403, detail="선택한 문서에 접근 권한이 없습니다.")
-    # CSV 생성 (기존 그대로)
-    output = io.StringIO()
-    writer = csv.writer(output)
-    
-    writer.writerow([
-        "문서ID", "파일명", "생성일시", "사용자 이름", "사용자 ID (username)", 
-        "사용 모델", "원문자수", "요약 내용 (최대 300자)"
-    ])
-    
-    for doc in documents:
-        writer.writerow([
-            doc.id,
-            doc.filename,
-            doc.created_at.isoformat() if doc.created_at else "없음",
-            doc.owner.full_name if doc.owner else "알수없음",
-            doc.owner.username if doc.owner else "N/A",
-            doc.model_used,
-            doc.char_count,
-            (doc.summary or "요약 내용 없음")[:300] + ("..." if doc.summary and len(doc.summary) > 300 else "")
-        ])
-    
-    content = output.getvalue().encode("utf-8-sig")
-    
-    safe_filename = quote(f"{username}_선택_요약목록.csv")
-    
-    return Response(
-        content=content,
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename*=UTF-8\'\'{safe_filename}'}
-    )
 
 # ────────────────────────────────────────────────────────────────
 # [정재훈] 2026-03-02 추가: localStorage의 full_name → 실제 username 변환 엔드포인트
