@@ -134,12 +134,15 @@ async def generate_protected_zip_response(normal_docs, important_docs, username,
         readme_content = (
             "선택한 요약 문서 다운로드 파일입니다.\n\n"
             "사용 방법\n"
+            "압축 해제 시 **7-Zip** 또는 호환 프로그램 사용을 강력 권장합니다.\n"
+            "(Windows 기본 압축 프로그램은 암호화된 파일을 열 수 없을 수 있습니다)\n\n"
             "1. 일반_문서_목록.csv 및 일반문서 폴더 → 바로 열림\n"
             "2. 중요문서 폴더 안 *_보호됨.zip\n"
-            " • 일반 사용자: 업로드 시 입력한 4자리 숫자 비밀번호 입력\n"
-            " • 관리자(admin): 암호 없이 바로 열림\n\n"
-            "관리자라면 모든 파일을 바로 확인 가능합니다."
-        ).encode('utf-8')
+            "   • 일반 사용자: 업로드 시 입력한 **4자리 숫자 비밀번호** 입력\n"
+            "   • 관리자(admin): 암호 없이 바로 열림\n\n"
+            "관리자라면 모든 파일을 바로 확인 가능합니다.\n"
+            "암호 입력이 안 될 경우: 7-Zip 최신 버전으로 다시 시도해 주세요."
+            ).encode('utf-8')
         main_zip.writestr("README.txt", readme_content)
 
         if normal_docs:
