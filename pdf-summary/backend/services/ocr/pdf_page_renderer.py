@@ -1,3 +1,4 @@
+from io import BytesIO
 from fastapi import HTTPException
 
 
@@ -45,3 +46,25 @@ def render_pdf_to_images(pdf_bytes: bytes, scale: float = 2.0):
         raise
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"PDF 렌더링 실패: {exc}")
+
+
+def render_input_to_images(file_bytes: bytes, extension: str, scale: float = 2.0):
+    """Render supported input bytes (pdf/image) into PIL images for OCR."""
+    if not file_bytes:
+        raise HTTPException(status_code=422, detail="파일이 비어있습니다.")
+
+    ext = (extension or "").lower()
+    if ext == ".pdf":
+        return render_pdf_to_images(file_bytes, scale=scale)
+
+    image_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff", ".gif"}
+    if ext in image_extensions:
+        try:
+            from PIL import Image
+
+            image = Image.open(BytesIO(file_bytes)).convert("RGB")
+            return [image]
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=f"이미지 파일을 읽을 수 없습니다: {exc}")
+
+    raise HTTPException(status_code=400, detail=f"지원하지 않는 파일 확장자입니다: {ext}")

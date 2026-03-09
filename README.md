@@ -6,7 +6,7 @@ PDF 파일 업로드 후 텍스트를 추출하고, Ollama 모델로 요약 및 
 
 ## 주요 기능
 
-- PDF 텍스트 추출
+- PDF/문서/이미지 텍스트 추출
 - AI 요약 생성
 - 원문/요약 영어 번역
 - 번역 결과 캐시(동일 문서/모델 재요청 시 재사용)
@@ -62,7 +62,7 @@ daol_minipro/
 | AI | Ollama |
 | DB | MariaDB |
 | ORM | SQLAlchemy |
-| PDF 처리 | PyPDF2 |
+| 문서/OCR 처리 | PyPDF2, Tesseract, EasyOCR, PaddleOCR |
 
 ---
 
@@ -132,16 +132,21 @@ MARIADB_ROOT_PASSWORD=9487
 MARIADB_DATABASE=pdf_summary
 MARIADB_USER=pdf_user
 MARIADB_PASSWORD=pdf_user_pw
+OLLAMA_BASE_URL=http://ollama:11434
 ```
 
 ```bash
 cd pdf-summary
 docker compose up --build
+
+# 최초 1회 모델 다운로드 (예: gemma3)
+docker compose exec ollama ollama pull gemma3:latest
 ```
 
 - Backend: `http://localhost:8000`
 - Frontend: `http://localhost:5173`
 - DB: `localhost:3306` (컨테이너명: `pdf_db`)
+- Ollama: `http://localhost:11434` (컨테이너명: `pdf_ollama`)
 
 초기 SQL(`backend/database_migration.sql`)은 DB 볼륨이 비어 있는 첫 실행 시 자동 적용됩니다.
 DB를 완전히 초기화하려면 아래 명령으로 볼륨까지 삭제 후 재실행합니다.
@@ -180,7 +185,7 @@ docker compose up --build
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| `POST` | `/api/summarize` | PDF 업로드 및 요약 저장 |
+| `POST` | `/api/summarize` | 파일 업로드 및 요약 저장 |
 | `POST` | `/api/translate` | 원문/요약 영어 번역 |
 | `GET` | `/api/document/{document_id}` | 문서 상세 조회 |
 | `GET` | `/api/documents/{user_id}` | 사용자 문서 목록 조회 |
@@ -216,6 +221,10 @@ docker compose up --build
 
 ## 참고 사항
 
-- Ollama 서버가 실행 중이어야 요약/번역 API가 정상 동작합니다.
+- Docker 실행 시 Ollama 서버도 함께 실행됩니다. 다만 사용할 모델(`gemma3:latest` 등)은 최초 1회 직접 pull 해야 합니다.
+- OCR 업로드 형식:
+    - `pypdf2`: `.pdf`만 지원
+    - `tesseract`/`easyocr`/`paddleocr`: `.pdf`, `.doc`, `.docx`, `.hwpx`, `.jpg`, `.jpeg`, `.png`, `.bmp`, `.webp`, `.tif`, `.tiff`, `.gif`
+    - `구형 .hwp`는 Docker 환경에서 LibreOffice 변환 한계로 실패할 수 있으므로 `.hwpx` 또는 `.docx/.pdf` 변환 후 업로드 권장
 - 중요 문서가 포함된 선택 다운로드는 ZIP(보호 파일 포함)으로 생성될 수 있습니다.
 - 백엔드는 `main.py`에서 라우터를 분리 등록하여 사용합니다.

@@ -60,7 +60,7 @@ const PdfSummary = () => {
         if ((ocrModel || '').toLowerCase() === 'pypdf2') {
             return ['.pdf'];
         }
-        return ['.pdf', '.doc', '.docx', '.hwp'];
+        return ['.pdf', '.doc', '.docx', '.hwpx', '.jpg', '.jpeg', '.png', '.bmp', '.webp', '.tif', '.tiff', '.gif'];
     };
 
     const getAcceptByModel = (ocrModel) => getAllowedExtensions(ocrModel).join(',');
@@ -195,13 +195,12 @@ const PdfSummary = () => {
             }
 
             const formData = new FormData();
-            formData.append("file", file);
-            formData.append("user_id", parseInt(userDbId));  // 정수로 변환
-            formData.append("ocr_model", selectedOcrModel);
-            // [추가] 중요문서 관련 정보 추가
-            formData.append("is_important", isImportant);
-            formData.append("password", isImportant ? documentPassword : null);
-            formData.append("is_public", isPublic);
+                        formData.append("file", file);
+                        formData.append("user_id", String(parseInt(userDbId) || 0));
+                        formData.append("ocr_model", selectedOcrModel);
+                        formData.append("is_important", isImportant ? "true" : "false");
+                        formData.append("password", isImportant ? String(documentPassword || "") : "");
+                        formData.append("is_public", isPublic ? "true" : "false");
 
             console.log("Sending extract request with user_id:", parseInt(userDbId), "ocr_model:", selectedOcrModel, "is_important:", isImportant);
 

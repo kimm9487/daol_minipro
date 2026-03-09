@@ -4,7 +4,7 @@ import numpy as np
 from fastapi import HTTPException, UploadFile
 
 from .image_preprocess import preprocess_for_ocr
-from .pdf_page_renderer import render_pdf_to_images
+from .pdf_page_renderer import render_input_to_images
 from .types import OcrResult
 
 
@@ -27,7 +27,9 @@ async def extract_text(file: UploadFile, langs: list = None) -> OcrResult:
     if langs is None:
         langs = ["ko", "en"]
 
-    images = render_pdf_to_images(contents)
+    filename = file.filename or "uploaded_file"
+    extension = filename[filename.rfind("."):].lower() if "." in filename else ""
+    images = render_input_to_images(contents, extension)
 
     reader = _build_reader(langs)
     parts = []

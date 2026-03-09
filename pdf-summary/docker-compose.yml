@@ -30,16 +30,28 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      ollama:
+        condition: service_started
     environment:
       DB_HOST: db
       DB_PORT: 3306
       DB_USER: ${MARIADB_USER:-pdf_user}
       DB_PASSWORD: ${MARIADB_PASSWORD:-pdf_user_pw}
       DB_NAME: ${MARIADB_DATABASE:-pdf_summary}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: pdf_ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
 
   frontend:
     build: ./frontend
@@ -58,3 +70,4 @@ services:
 volumes:
   mariadb_data:
   frontend_node_modules:
+  ollama_data:

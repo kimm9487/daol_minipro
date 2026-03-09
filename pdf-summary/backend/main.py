@@ -39,15 +39,26 @@ app = FastAPI(title="PDF 요약 시스템 API")
 @app.exception_handler(HTTPException)
 async def http_exception_discord_handler(request: Request, exc: HTTPException):
     level = "error" if exc.status_code >= 500 else "warning"
-    user_id = request.query_params.get("user_id", "알 수 없음")
+
+    # query params 우선, 없으면 form data에서 user_id 추출
+    user_id = request.query_params.get("user_id")
+    if not user_id:
+        try:
+            form = await request.form()
+            user_id = form.get("user_id")
+        except Exception:
+            pass
+    user_id = str(user_id) if user_id else "알 수 없음"
+
     await send_discord_alert(
         error_msg=exc.detail,
-        user_id=str(user_id),
+        user_id=user_id,
         path=request.url.path,
         level=level,
         status_code=exc.status_code
     )
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
 
 # [중요] CORS 미들웨어는 라우터 등록 "전에" 추가해야 합니다!
 # 외부 IP 접속을 허용하기 위해 기본 localhost 목록 + IPv4 패턴을 허용합니다.
