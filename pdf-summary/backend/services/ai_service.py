@@ -1,8 +1,9 @@
+import os
 import httpx
 from fastapi import HTTPException
 
 # Ollama 기본 설정
-OLLAMA_BASE_URL = "http://localhost:11434"
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 DEFAULT_MODEL = "gemma3:latest"  
 
 
@@ -50,7 +51,7 @@ async def summarize_text(text: str, model: str = DEFAULT_MODEL) -> str:
     except httpx.ConnectError:
         raise HTTPException(
             status_code=503,
-            detail="Ollama 서버에 연결할 수 없습니다. 'ollama serve' 명령어로 서버를 실행해주세요."
+            detail="Ollama 서버에 연결할 수 없습니다. 서버 주소(OLLAMA_BASE_URL) 또는 컨테이너 상태를 확인해주세요."
         )
     except HTTPException:
         raise
@@ -98,7 +99,7 @@ async def translate_to_english(text: str, model: str = DEFAULT_MODEL) -> str:
     except httpx.ConnectError:
         raise HTTPException(
             status_code=503,
-            detail="Ollama 서버에 연결할 수 없습니다. 'ollama serve' 명령어로 서버를 실행해주세요."
+            detail="Ollama 서버에 연결할 수 없습니다. 서버 주소(OLLAMA_BASE_URL) 또는 컨테이너 상태를 확인해주세요."
         )
     except HTTPException:
         raise

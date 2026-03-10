@@ -4,7 +4,7 @@ import os
 from fastapi import HTTPException, UploadFile
 
 from .image_preprocess import preprocess_for_ocr
-from .pdf_page_renderer import render_pdf_to_images
+from .pdf_page_renderer import render_input_to_images
 from .types import OcrResult
 
 
@@ -28,7 +28,9 @@ async def extract_text(file: UploadFile, lang: str = "kor+eng") -> OcrResult:
     if len(contents) == 0:
         raise HTTPException(status_code=422, detail="파일이 비어있습니다.")
 
-    images = render_pdf_to_images(contents)
+    filename = file.filename or "uploaded_file"
+    extension = os.path.splitext(filename)[1].lower()
+    images = render_input_to_images(contents, extension)
 
     parts = []
     successful_pages = 0
@@ -44,8 +46,9 @@ async def extract_text(file: UploadFile, lang: str = "kor+eng") -> OcrResult:
             prepared = preprocess_for_ocr(image)
             candidates.append(_extract_from_page(prepared, lang=lang).strip())
 
-            # Last fallback: English only (some installations lack kor data quality).
-            candidates.append(_extract_from_page(prepared, lang="eng").strip())
+            # English-only fallback can produce long but garbled text for Korean documents.
+            if "kor" not in (lang or ""):
+                candidates.append(_extract_from_page(prepared, lang="eng").strip())
 
             page_text = max(candidates, key=lambda x: len(x)) if candidates else ""
             if page_text:

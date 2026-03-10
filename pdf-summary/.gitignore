@@ -1,8 +1,7 @@
+# Python bytecode
 __pycache__/
-*.pyc
-<<<<<<< HEAD
 *.py[cod]
-backend/*.zip
-=======
-.env
->>>>>>> e3f0575dd46c79ee545ecbdf190da4440afabce6
+*$py.class
+*.pyc
+*.pyo
+*.pyd

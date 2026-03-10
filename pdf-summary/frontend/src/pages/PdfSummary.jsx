@@ -208,6 +208,7 @@ const PdfSummary = () => {
         return;
       }
 
+<<<<<<< HEAD
       const formData = new FormData();
       formData.append("file", file);
       formData.append("user_id", parseInt(userDbId));  // 정수로 변환
@@ -216,6 +217,14 @@ const PdfSummary = () => {
       formData.append("is_important", isImportant);
       formData.append("password", isImportant ? documentPassword : null);
       formData.append("is_public", isPublic);
+=======
+    const getAllowedExtensions = (ocrModel) => {
+        if ((ocrModel || '').toLowerCase() === 'pypdf2') {
+            return ['.pdf'];
+        }
+        return ['.pdf', '.doc', '.docx', '.hwpx', '.jpg', '.jpeg', '.png', '.bmp', '.webp', '.tif', '.tiff', '.gif'];
+    };
+>>>>>>> 798c07ea3711d0c9f7a85f864f9240da845bf0fb
 
       console.log(
         "Sending extract request with user_id:",
@@ -348,7 +357,17 @@ const PdfSummary = () => {
         body: formData,
       });
 
+<<<<<<< HEAD
       const data = await res.json();
+=======
+            const formData = new FormData();
+                        formData.append("file", file);
+                        formData.append("user_id", String(parseInt(userDbId) || 0));
+                        formData.append("ocr_model", selectedOcrModel);
+                        formData.append("is_important", isImportant ? "true" : "false");
+                        formData.append("password", isImportant ? String(documentPassword || "") : "");
+                        formData.append("is_public", isPublic ? "true" : "false");
+>>>>>>> 798c07ea3711d0c9f7a85f864f9240da845bf0fb
 
       if (!res.ok) {
         const errorMsg = data.detail || "번역 중 오류가 발생했습니다.";
