@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS pdf_documents (
   filename VARCHAR(255) NOT NULL,
   extracted_text LONGTEXT,
   summary LONGTEXT,
+  ocr_model VARCHAR(50) COMMENT '텍스트 추출에 사용된 OCR 모델',
   model_used VARCHAR(100),
   char_count INT DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -109,6 +110,21 @@ CREATE TABLE IF NOT EXISTS pdf_documents (
 ) ENGINE=InnoDB AUTO_INCREMENT=18 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ========================================
+<<<<<<< HEAD
+=======
+-- 5-1. 기존 테이블에 컬럼 추가 (마이그레이션)
+-- ========================================
+ALTER TABLE pdf_documents ADD COLUMN IF NOT EXISTS ocr_model VARCHAR(50) COMMENT '텍스트 추출에 사용된 OCR 모델' AFTER summary;
+ALTER TABLE pdf_documents ADD COLUMN IF NOT EXISTS category ENUM('강의','법률안','보고서','기타') DEFAULT '기타' NOT NULL COMMENT '문서 카테고리' AFTER successful_pages;
+ALTER TABLE pdf_documents ADD INDEX IF NOT EXISTS ix_pdf_documents_category (category);
+
+-- 보안 관련 필드 추가
+ALTER TABLE pdf_documents ADD COLUMN IF NOT EXISTS is_important BOOLEAN DEFAULT FALSE COMMENT '중요문서 여부' AFTER category;
+ALTER TABLE pdf_documents ADD COLUMN IF NOT EXISTS password VARCHAR(4) DEFAULT NULL COMMENT '4자리 숫자 비밀번호 (중요문서만 해당)' AFTER is_important;
+ALTER TABLE pdf_documents ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT TRUE COMMENT '공개 여부 (True: 공개, False: 비공개)' AFTER password;
+
+-- ========================================
+>>>>>>> 5d99538cc26448d89ad02e71afe79c10a07e943f
 -- 6. 통계 정보 확인용 쿼리 (필요할 때 실행)
 -- ========================================
 /*
