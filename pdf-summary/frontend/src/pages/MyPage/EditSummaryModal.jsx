@@ -18,7 +18,10 @@ const EditSummaryModal = ({ show, onClose, onSave, document }) => {
   }, [document]);
 
   const handleSave = () => {
-    if (isImportant && (docPassword.length !== 4 || !/^\d+$/.test(docPassword))) {
+    if (
+      isImportant &&
+      (docPassword.length !== 4 || !/^\d+$/.test(docPassword))
+    ) {
       alert("중요 문서는 숫자 4자리 비밀번호가 필요합니다.");
       return;
     }

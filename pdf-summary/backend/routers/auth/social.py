@@ -127,11 +127,12 @@ async def google_callback(request: Request, code: str, db: Session = Depends(get
 
     # TODO: 성공 후 프론트엔드의 특정 페이지로 리디렉션하면서 토큰을 전달해야 함
     # 예: return RedirectResponse(url=f"http://frontend.url/login/success?token={session_token}")
-    return {
-        "message": "로그인 성공",
-        "user_name": user.full_name,
-        "user_id": user.username,
-        "user_db_id": user.id,
-        "session_token": session_token
-    }
+    frontend_redirect_url = (
+        f"http://localhost:5173/login?"  # 프론트엔드 주소에 맞게 포트(5173 등) 확인 필요
+        f"session_token={session_token}&"
+        f"user_name={user.full_name}&"
+        f"user_id={user.username}&"
+        f"user_db_id={user.id}"
+    )
+    return RedirectResponse(url=frontend_redirect_url)
 

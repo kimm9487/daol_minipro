@@ -8,7 +8,7 @@ import os
 
 # 환경 변수 로드 (.env 파일이 없어도 기본값으로 동작하도록 설정)
 load_dotenv()
-
+print(f"DEBUG: Connecting to {os.getenv('DB_HOST')} as {os.getenv('DB_USER')}")
 # 데이터베이스 접속 정보 (전달해주신 정보로 업데이트)
 DB_HOST     = os.getenv("DB_HOST", "192.168.0.151")
 DB_PORT     = os.getenv("DB_PORT", "3306")

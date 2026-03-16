@@ -22,7 +22,7 @@ export const useDocumentHistory = () => {
 
       const profileResponse = await fetch(
         buildApiUrl(`/auth/profile/${userDbId}`),
-        { cache: "no-store" }
+        { cache: "no-store" },
       );
       let userRole = "user";
       if (profileResponse.ok) {
@@ -45,8 +45,7 @@ export const useDocumentHistory = () => {
             date: doc.created_at ? doc.created_at.split("T")[0] : "",
             fileName: doc.filename,
             is_public:
-              String(doc.is_public) === "true" ||
-              String(doc.is_public) === "1",
+              String(doc.is_public) === "true" || String(doc.is_public) === "1",
             is_important:
               doc.is_important === true || String(doc.is_important) === "1",
           }));
@@ -73,7 +72,7 @@ export const useDocumentHistory = () => {
       const userDbId = localStorage.getItem("userDbId");
       const response = await fetch(
         buildApiUrl(`/api/document/${docId}?user_id=${userDbId}`),
-        { method: "GET" }
+        { method: "GET" },
       );
       if (response.ok) {
         return await response.json();
@@ -103,7 +102,7 @@ export const useDocumentHistory = () => {
             is_important: updatedData.isImportant,
             password: updatedData.password,
           }),
-        }
+        },
       );
       if (response.ok) {
         setHistory((prev) =>
@@ -115,8 +114,8 @@ export const useDocumentHistory = () => {
                   summary: updatedData.summary,
                   is_important: updatedData.isImportant,
                 }
-              : doc
-          )
+              : doc,
+          ),
         );
         alert("문서 정보가 성공적으로 수정되었습니다.");
         return true;
@@ -166,13 +165,13 @@ export const useDocumentHistory = () => {
             user_id: parseInt(userDbId),
             is_public: newPublicStatus ? 1 : 0,
           }),
-        }
+        },
       );
       if (response.ok) {
         setHistory((prev) =>
           prev.map((doc) =>
-            doc.id === item.id ? { ...doc, is_public: newPublicStatus } : doc
-          )
+            doc.id === item.id ? { ...doc, is_public: newPublicStatus } : doc,
+          ),
         );
         return true;
       }

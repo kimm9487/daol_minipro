@@ -22,8 +22,7 @@ const Pagination = ({ currentPage, totalPages, onPageChange }) => {
             pageNum === totalPages ||
             (pageNum >= currentPage - 1 && pageNum <= currentPage + 1);
 
-          const isEllipsis =
-            !isVisible && (i === 1 || i === totalPages - 2);
+          const isEllipsis = !isVisible && (i === 1 || i === totalPages - 2);
 
           if (!isVisible && i !== 0 && i !== 1) {
             // Render ellipsis only once
