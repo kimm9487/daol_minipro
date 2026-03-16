@@ -1,16 +1,67 @@
-# React + Vite
+# PDF 요약 서비스 프론트엔드
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+이 프로젝트는 PDF 파일을 받아 AI를 통해 내용을 요약해주는 웹 애플리케이션의 프론트엔드입니다. React와 Vite를 사용하여 개발되었습니다.
 
-Currently, two official plugins are available:
+## 주요 기능
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- PDF 파일 업로드 및 텍스트 추출
+- AI 모델을 이용한 텍스트 요약
+- 사용자 인증 (회원가입, 로그인)
+- 요약 기록 조회 및 관리
+- 관리자 대시보드 (사용자 및 문서 관리)
 
-## React Compiler
+## 디렉토리 구조
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+프로젝트의 주요 디렉토리 구조는 다음과 같습니다.
 
-## Expanding the ESLint configuration
+```
+frontend/
+├── src/
+│   ├── assets/         # 이미지, 폰트 등 정적 에셋
+│   ├── components/     # 공통 재사용 컴포넌트
+│   ├── config/         # API 설정 등 환경 설정
+│   ├── hooks/          # 커스텀 React 훅
+│   ├── pages/          # 라우팅되는 페이지 컴포넌트
+│   │   ├── AdminDashboard/ # 관리자 대시보드
+│   │   ├── Login/          # 로그인
+│   │   ├── MyPage/         # 마이페이지
+│   │   ├── PdfSummary/     # PDF 요약
+│   │   ├── Register/       # 회원가입
+│   │   └── UserList.jsx    # 사용자 목록 페이지
+│   ├── App.jsx         # 메인 애플리케이션 컴포넌트
+│   └── main.jsx        # 애플리케이션 진입점
+├── public/             # Vite public 디렉토리
+└── package.json        # 프로젝트 의존성 및 스크립트
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### `pages` 디렉토리 상세 구조
+
+각 페이지는 기능별 컴포넌트로 분리되어 관리됩니다.
+
+- **AdminDashboard**: 관리자 전용 페이지로, 데이터베이스 상태, 활성 세션, 사용자 관리, 문서 목록 등의 기능을 포함합니다.
+- **Login**: 사용자 로그인 및 계정 찾기 기능을 제공합니다.
+- **MyPage**: 로그인한 사용자의 프로필 정보, 요약 기록 등을 보여줍니다.
+- **PdfSummary**: PDF 파일을 업로드하고, 모델을 선택하여 요약을 요청하는 핵심 기능 페이지입니다.
+- **Register**: 신규 사용자 회원가입 및 이메일 인증을 처리합니다.
+- **UserList**: 등록된 전체 사용자 목록을 보여주는 페이지입니다. (주로 관리자용)
+
+### `hooks` 디렉토리
+
+반복되는 로직을 커스텀 훅으로 분리하여 재사용성을 높였습니다.
+
+- `useAuthRedirect.js`: 로그인이 필요한 페이지에 접근 시 로그인 여부를 확인하고 리디렉션합니다.
+- `useDocumentHistory.js`: 문서 요약 기록을 가져오는 로직을 처리합니다.
+- `useLogin.js`: 로그인 API 호출 및 상태를 관리합니다.
+- `useLogout.js`: 로그아웃 로직을 처리합니다.
+- `usePdfSummary.js`: PDF 요약 요청 및 결과 처리를 담당합니다.
+- `useRegister.js`: 회원가입 API 호출 및 상태를 관리합니다.
+- `useSessionValidator.js`: 사용자의 세션 유효성을 주기적으로 검증합니다.
+
+## 사용 가능한 스크립트
+
+프로젝트 루트 디렉토리에서 다음 스크립트를 실행할 수 있습니다.
+
+- `npm run dev`: 개발 모드로 애플리케이션을 실행합니다.
+- `npm run build`: 프로덕션용으로 애플리케이션을 빌드합니다.
+- `npm run lint`: ESLint를 사용하여 코드 스타일을 검사합니다.
+- `npm run preview`: 빌드된 결과물을 미리보기 모드로 실행합니다.

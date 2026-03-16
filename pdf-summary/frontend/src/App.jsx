@@ -9,7 +9,7 @@ import { useState, useEffect } from "react";
 import Header from "./components/Header";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
-import PdfSummary from "./pages/PdfSummary.jsx";
+import PdfSummary from "./pages/PdfSummary";
 import MyPage from "./pages/MyPage"; // 이재윤 MyPage 컴포넌트 분리
 import AdminDashboard from "./pages/AdminDashboard";
 import UserList from "./pages/UserList"; // 정재훈 추가 (2026-02-27): 전체 요약/사용자 목록 조회 페이지 (관리자 전용)
