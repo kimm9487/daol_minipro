@@ -5,14 +5,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from database import get_db, User, UserSession, log_admin_activity
 
-router = APIRouter()
+sessions_router = APIRouter(tags=["Session Management"])
 
 
 # ────────────────────────────────────────────────────────────────
 # 세션 관리 엔드포인트
 # ────────────────────────────────────────────────────────────────
 
-@router.get("/auth/sessions/validate")
+@sessions_router.get("/sessions/validate")
 def validate_session(
     user_id: int = Query(...),
     session_token: str = Query(...),
@@ -45,7 +45,7 @@ def validate_session(
     return {"is_valid": True, "reason": "유효한 세션"}
 
 
-@router.get("/auth/sessions/current")
+@sessions_router.get("/sessions/current")
 def get_current_sessions(
     user_id: int = Query(...),
     db: Session = Depends(get_db)
@@ -82,7 +82,7 @@ def get_current_sessions(
     }
 
 
-@router.delete("/auth/sessions/{session_id}")
+@sessions_router.delete("/sessions/{session_id}")
 def logout_session(
     session_id: int,
     request: Request,
@@ -127,7 +127,7 @@ def logout_session(
     return {"message": "세션이 종료되었습니다.", "session_id": session_id}
 
 
-@router.post("/auth/logout")
+@sessions_router.post("/logout")
 def logout(
     request: Request,
     user_id: int = Form(...),
@@ -174,7 +174,7 @@ def logout(
     return {"message": "로그아웃되었습니다."}
 
 
-@router.get("/auth/login-history")
+@sessions_router.get("/login-history")
 def get_login_history(
     user_id: int = Query(...),
     db: Session = Depends(get_db)
@@ -209,7 +209,7 @@ def get_login_history(
     }
 
 
-@router.get("/auth/admin/sessions")
+@sessions_router.get("/admin/sessions")
 def get_all_sessions(
     admin_user_id: int = Query(...),
     page: int = Query(1),
@@ -258,7 +258,7 @@ def get_all_sessions(
     }
 
 
-@router.delete("/auth/admin/sessions/{session_id}")
+@sessions_router.delete("/admin/sessions/{session_id}")
 def admin_force_logout(
     session_id: int,
     request: Request,

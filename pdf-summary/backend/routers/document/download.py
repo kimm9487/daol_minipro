@@ -13,9 +13,9 @@ import json
 
 from database import get_db, PdfDocument, User, log_admin_activity
 
-router = APIRouter(prefix="/api/admin", tags=["admin-download"])
+download_router = APIRouter(tags=["Document Download"])
 
-@router.post("/download-selected")
+@download_router.post("/download-selected")
 async def download_selected_documents(
     body: dict = Body(...),
     db: Session = Depends(get_db)
