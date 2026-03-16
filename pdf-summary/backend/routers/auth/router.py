@@ -6,6 +6,7 @@ from .login import login_router
 from .profile import profile_router
 from .find_account import find_account_router
 from .sessions import sessions_router
+from .social import social_router
 # prefix="/auth"를 설정해서, 이 안에 포함된 모든 경로 앞에 /auth가 자동으로 붙게 만듭니다.
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -15,3 +16,4 @@ router.include_router(login_router)
 router.include_router(profile_router)
 router.include_router(find_account_router)
 router.include_router(sessions_router)
+router.include_router(social_router)
