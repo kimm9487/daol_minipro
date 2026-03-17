@@ -323,22 +323,24 @@ async def summarize_with_instruction(
 {rag_context}
 """
 
-    prompt = f"""당신은 문서 분석 도우미입니다.
-아래 사용자의 요청을 가장 우선으로 반영해 한국어로 답변하세요.
+    prompt = f"""당신은 문서 분석 AI 도우미입니다.
+반드시 아래 [사용자 요청]에만 정확히 답변하세요. 요청하지 않은 내용은 추가하지 마세요.
 
 [사용자 요청]
 {clean_instruction}
 
 {rag_block}
 
-[문서 내용]
+[참고 문서 내용]
 {text}
 
-[응답 규칙]
-- 요청이 요약이면 핵심 위주로 간결하게 작성
-- 요청이 목록/표 형태를 원하면 그 형식에 맞게 작성
-- 문서에 없는 내용은 추측하지 않음
-- RAG 문맥이 있으면 해당 근거를 우선 반영
+[답변 규칙]
+- 사용자 요청이 최우선입니다. 요청한 것만 답변하세요.
+- 모델 자신에 관한 질문(예: "너는 뭐야?", "무슨 모델이야?" 등)은 문서와 무관하게 직접 답변하세요.
+- 요약을 명시적으로 요청했을 때만 문서를 요약하세요.
+- 특정 내용을 질문하면 해당 내용만 문서에서 찾아 답하세요.
+- 문서에서 확인할 수 없는 내용은 "문서에서 확인할 수 없습니다"라고 명시하세요.
+- RAG 문맥이 있으면 해당 근거를 우선 반영하세요.
 """
 
     try:
@@ -373,6 +375,114 @@ async def summarize_with_instruction(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"대화형 요약 중 오류 발생: {str(e)}")
+
+
+async def summarize_with_instruction_stream(
+    text: str,
+    instruction: str,
+    model: str = DEFAULT_MODEL,
+    user_scope: str = "shared",
+    use_rag: bool = True,
+    use_lora: bool = False,
+) -> AsyncIterator[str]:
+    """사용자 지시 기반 대화형 요약을 토큰 스트리밍으로 반환합니다."""
+    MAX_CHARS = 12000
+    if len(text) > MAX_CHARS:
+        text = text[:MAX_CHARS] + "\n\n[... 이하 내용 생략 ...]"
+
+    clean_instruction = (instruction or "핵심 내용을 짧게 요약해줘").strip()
+    if not clean_instruction:
+        clean_instruction = "핵심 내용을 짧게 요약해줘"
+
+    selected_model = LORA_MODEL_NAME if use_lora else model
+    if not selected_model:
+        selected_model = DEFAULT_MODEL
+
+    rag_context = ""
+    rag_count = 0
+    if use_rag:
+        rag_context, rag_count = await build_rag_context(
+            document_text=text,
+            query=clean_instruction,
+            user_scope=user_scope,
+        )
+
+    rag_block = ""
+    if rag_context:
+        rag_block = f"""
+[검색 문맥(RAG)]
+아래 문맥을 우선 참고해 답변하세요.
+{rag_context}
+"""
+
+    prompt = f"""당신은 문서 분석 AI 도우미입니다.
+반드시 아래 [사용자 요청]에만 정확히 답변하세요. 요청하지 않은 내용은 추가하지 마세요. 무조건 한국어로 답변하세요.
+
+[사용자 요청]
+{clean_instruction}
+
+{rag_block}
+
+[참고 문서 내용]
+{text}
+
+[답변 규칙]
+- 사용자 요청이 최우선입니다. 요청한 것만 답변하세요.
+- 무조건 한국어로 답변하세요.
+- 모델 자신에 관한 질문(예: "너는 뭐야?", "무슨 모델이야?" 등)은 문서와 무관하게 직접 답변하세요.
+- 요약을 명시적으로 요청했을 때만 문서를 요약하세요.
+- 특정 내용을 질문하면 해당 내용만 문서에서 찾아 답하세요.
+- 문서에서 확인할 수 없는 내용은 "문서에서 확인할 수 없습니다"라고 명시하세요.
+- RAG 문맥이 있으면 해당 근거를 우선 반영하세요.
+"""
+
+    try:
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            async with client.stream(
+                "POST",
+                f"{OLLAMA_BASE_URL}/api/generate",
+                json={
+                    "model": selected_model,
+                    "prompt": prompt,
+                    "stream": True,
+                },
+            ) as response:
+                if response.status_code != 200:
+                    body = await response.aread()
+                    detail = body.decode("utf-8", errors="ignore")
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Ollama API 오류: {response.status_code} - 모델({selected_model})이 설치되어 있는지 확인하세요. {detail}".strip(),
+                    )
+
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+
+                    try:
+                        payload = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+
+                    chunk = payload.get("response", "")
+                    if chunk:
+                        yield chunk
+
+                    if payload.get("done"):
+                        break
+
+        if rag_count > 0:
+            yield f"\n\n(참고 문맥 {rag_count}개 기반)"
+
+    except httpx.ConnectError:
+        raise HTTPException(
+            status_code=503,
+            detail="Ollama 서버에 연결할 수 없습니다. 서버 주소(OLLAMA_BASE_URL) 또는 컨테이너 상태를 확인해주세요.",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"대화형 스트리밍 요약 중 오류 발생: {str(e)}")
 
 
 async def translate_to_english(text: str, model: str = DEFAULT_MODEL) -> str:

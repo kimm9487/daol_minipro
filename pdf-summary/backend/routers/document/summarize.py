@@ -15,7 +15,13 @@ from celery.result import AsyncResult
 import PyPDF2
 
 from services.pdf_service import extract_text_from_pdf
-from services.ai_service import summarize_text, summarize_text_stream, categorize_document  # [변경] summarize_text_stream 추가
+from services.ai_service import (
+    summarize_text,
+    summarize_text_stream,
+    summarize_with_instruction,
+    summarize_with_instruction_stream,
+    categorize_document,
+)  # [변경] summarize_text_stream/summarize_with_instruction 스트리밍 포함
 from services.ocr.factory import extract_with_model_sync  # [추가] OCR 동기 실행용 (run_in_executor)
 from database import get_db, PdfDocument, can_user_access_document, log_admin_activity
 from celery_app import celery_app
@@ -59,6 +65,59 @@ async def chat_summarize(request: ChatSummarizeRequest):
         "rag_enabled": request.use_rag,
         "lora_enabled": request.use_lora,
     }
+
+
+@summarize_router.post("/chat-summarize/stream")
+async def chat_summarize_stream(request: ChatSummarizeRequest):
+    """사용자 지시 기반 대화형 요약 응답을 SSE로 실시간 전송합니다."""
+    text = (request.document_text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="문서 텍스트가 비어있습니다.")
+
+    model_used = request.model
+    if request.use_lora:
+        model_used = os.getenv("LORA_MODEL_NAME", model_used)
+
+    def _sse(data: dict) -> str:
+        return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+    async def generate():
+        collected = []
+        try:
+            async for token in summarize_with_instruction_stream(
+                text=text,
+                instruction=request.instruction,
+                model=request.model,
+                user_scope=f"user_{request.user_id}" if request.user_id else "shared",
+                use_rag=request.use_rag,
+                use_lora=request.use_lora,
+            ):
+                collected.append(token)
+                yield _sse({"type": "token", "text": token})
+        except Exception as exc:
+            detail = getattr(exc, "detail", str(exc))
+            yield _sse({"type": "error", "detail": detail})
+            return
+
+        yield _sse(
+            {
+                "type": "done",
+                "answer": "".join(collected),
+                "model_used": model_used,
+                "rag_enabled": request.use_rag,
+                "lora_enabled": request.use_lora,
+            }
+        )
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @summarize_router.post("/extract/async")

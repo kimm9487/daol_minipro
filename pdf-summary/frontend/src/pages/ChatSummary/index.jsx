@@ -66,6 +66,26 @@ const ChatSummary = () => {
     setMessages((prev) => [...prev, { role, content }]);
   };
 
+  const appendAssistantToken = (token) => {
+    setMessages((prev) => {
+      if (prev.length === 0) {
+        return [...prev, { role: "assistant", content: token }];
+      }
+
+      const next = [...prev];
+      const lastIndex = next.length - 1;
+      const last = next[lastIndex];
+
+      if (last.role === "assistant") {
+        next[lastIndex] = { ...last, content: `${last.content}${token}` };
+      } else {
+        next.push({ role: "assistant", content: token });
+      }
+
+      return next;
+    });
+  };
+
   const handleExtract = async () => {
     if (!file) {
       appendMessage("assistant", "먼저 PDF 파일을 선택해 주세요.");
@@ -118,7 +138,9 @@ const ChatSummary = () => {
 
     setLoadingChat(true);
     try {
-      const response = await fetch(`${API_BASE}/documents/chat-summarize`, {
+      appendMessage("assistant", "");
+
+      const response = await fetch(`${API_BASE}/documents/chat-summarize/stream`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -132,16 +154,102 @@ const ChatSummary = () => {
           use_lora: useLora,
         }),
       });
-
-      const data = await response.json();
       if (!response.ok) {
-        appendMessage("assistant", data.detail || "응답 생성 중 오류가 발생했습니다.");
+        const data = await response.json().catch(() => ({}));
+        setMessages((prev) => {
+          const next = [...prev];
+          const idx = next.length - 1;
+          if (idx >= 0 && next[idx].role === "assistant") {
+            next[idx] = {
+              ...next[idx],
+              content: data.detail || "응답 생성 중 오류가 발생했습니다.",
+            };
+          }
+          return next;
+        });
         return;
       }
 
-      appendMessage("assistant", data.answer || "응답이 비어 있습니다.");
+      if (!response.body) {
+        setMessages((prev) => {
+          const next = [...prev];
+          const idx = next.length - 1;
+          if (idx >= 0 && next[idx].role === "assistant" && !next[idx].content) {
+            next[idx] = { ...next[idx], content: "스트리밍 응답을 받을 수 없습니다." };
+          }
+          return next;
+        });
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split("\n\n");
+        buffer = events.pop() || "";
+
+        for (const eventChunk of events) {
+          const lines = eventChunk
+            .split("\n")
+            .filter((line) => line.startsWith("data:"))
+            .map((line) => line.slice(5).trim());
+
+          if (!lines.length) continue;
+
+          let payload;
+          try {
+            payload = JSON.parse(lines.join("\n"));
+          } catch {
+            continue;
+          }
+
+          if (payload.type === "token" && payload.text) {
+            appendAssistantToken(payload.text);
+          } else if (payload.type === "error") {
+            setMessages((prev) => {
+              const next = [...prev];
+              const idx = next.length - 1;
+              if (idx >= 0 && next[idx].role === "assistant") {
+                next[idx] = {
+                  ...next[idx],
+                  content: payload.detail || "응답 생성 중 오류가 발생했습니다.",
+                };
+              }
+              return next;
+            });
+            return;
+          }
+        }
+      }
+
+      setMessages((prev) => {
+        const next = [...prev];
+        const idx = next.length - 1;
+        if (idx >= 0 && next[idx].role === "assistant" && !next[idx].content.trim()) {
+          next[idx] = { ...next[idx], content: "응답이 비어 있습니다." };
+        }
+        return next;
+      });
     } catch (error) {
-      appendMessage("assistant", `요청 실패: ${error.message}`);
+      setMessages((prev) => {
+        const next = [...prev];
+        const idx = next.length - 1;
+        if (idx >= 0 && next[idx].role === "assistant") {
+          const fallback = next[idx].content?.trim()
+            ? `${next[idx].content}\n\n요청 실패: ${error.message}`
+            : `요청 실패: ${error.message}`;
+          next[idx] = { ...next[idx], content: fallback };
+        } else {
+          next.push({ role: "assistant", content: `요청 실패: ${error.message}` });
+        }
+        return next;
+      });
     } finally {
       setLoadingChat(false);
     }
