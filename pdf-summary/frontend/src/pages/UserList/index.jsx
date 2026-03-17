@@ -7,6 +7,7 @@ import SelectionControls from "./SelectionControls";
 import UserTable from "./UserTable";
 import PaginationArea from "./PaginationArea";
 import Modals from "./Modals";
+import toast from "react-hot-toast"; // [추가] alert() 대신 toast 알림 사용
 import "./style.css"; // 기존 CSS 파일 사용
 
 const UserList = () => {

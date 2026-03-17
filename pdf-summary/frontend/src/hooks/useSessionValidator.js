@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useLogout } from "./useLogout";
 import { buildApiUrl } from "../config/api";
+import toast from "react-hot-toast";
 
 /**
  * 세션 유효성을 주기적으로 검증하고, 강제 로그아웃 감지 시 처리
@@ -49,10 +50,10 @@ export const useSessionValidator = (checkInterval = 600000) => {
           // 강제 로그아웃된 경우
           if (data.reason === "강제 로그아웃") {
             console.warn("강제 로그아웃 감지됨");
-            alert("관리자에 의해 강제 로그아웃 되었습니다.");
+            toast.error("관리자에 의해 강제 로그아웃 되었습니다.");
           } else {
             console.warn("세션 무효화:", data.reason);
-            alert(`세션이 무효화되었습니다: ${data.reason}`);
+            toast.error(`세션이 무효화되었습니다: ${data.reason}`);
           }
 
           // useLogout Hook으로 로그아웃 처리

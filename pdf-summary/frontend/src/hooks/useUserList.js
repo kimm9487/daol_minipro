@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useSessionValidator } from "./useSessionValidator";
 import { useLogout } from "./useLogout";
 import { buildApiUrl } from "../config/api";
+import toast from "react-hot-toast"; // [추가] alert() 대신 toast 알림 사용
 
 export const useUserList = () => {
   useSessionValidator(); // 세션 검증
@@ -293,7 +294,7 @@ export const useUserList = () => {
 
   const handleViewClick = (docId) => {
     const doc = data.find((item) => item.id === docId);
-    if (!doc || !canView(doc)) return alert("권한이 없습니다.");
+    if (!doc || !canView(doc)) return toast.error("권한이 없습니다.");
     setSelectedDoc(doc);
     if (doc.isImportant && !isAdmin) {
       setPasswordDocId(doc.id);
@@ -305,16 +306,16 @@ export const useUserList = () => {
   };
 
   const handlePasswordSubmit = () => {
-    if (!passwordDocId) return alert("문서 정보가 유효하지 않습니다.");
+    if (!passwordDocId) return toast.error("문서 정보가 유효하지 않습니다.");
     const doc = data.find((item) => Number(item.id) === Number(passwordDocId));
-    if (!doc) return alert("해당 문서를 찾을 수 없습니다.");
+    if (!doc) return toast.error("해당 문서를 찾을 수 없습니다.");
     if (String(doc.password || "") === passwordInput.trim()) {
       setIsPasswordModalOpen(false);
       setPasswordInput("");
       setPasswordDocId(null);
       setIsModalOpen(true);
     } else {
-      alert("비밀번호가 일치하지 않습니다.");
+      toast.error("비밀번호가 일치하지 않습니다.");
     }
   };
 
@@ -395,7 +396,7 @@ export const useUserList = () => {
 
   const handleDownload = async () => {
     if (selectedItems.length === 0)
-      return alert("다운로드할 항목을 선택하세요.");
+      return toast.error("다운로드할 항목을 선택하세요.");
     const safeIds = selectedItems.filter((id) => !isNaN(id) && id > 0);
     const importantDocs = filteredData.filter(
       (item) => safeIds.includes(Number(item.id)) && item.isImportant,
@@ -432,9 +433,9 @@ export const useUserList = () => {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      alert(hasImportant ? "ZIP 다운로드 완료!" : "CSV 다운로드 완료!");
+      toast.success(hasImportant ? "ZIP 다운로드 완료!" : "CSV 다운로드 완료!");
     } catch (err) {
-      alert("다운로드 실패: " + err.message);
+      toast.error("다운로드 실패: " + err.message);
     }
   };
 

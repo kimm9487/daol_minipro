@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useRef } from "react";
 import { buildApiUrl } from "../config/api";
+import toast from "react-hot-toast"; // [추가] alert() 대신 toast 알림 사용
 
 /**
  * 로그아웃 기능을 제공하는 Hook
@@ -58,16 +59,6 @@ export const useLogout = (setIsLoggedIn = null, options = {}) => {
         }
       }
 
-      // 로그아웃 완료
-      if (setIsLoggedIn) {
-        setIsLoggedIn(false);
-      }
-
-      // 같은 탭에서도 App 상태를 즉시 동기화하기 위한 이벤트
-      window.dispatchEvent(new Event("authStateChanged"));
-
-      console.log("✓ 로그아웃 완료");
-
       // localStorage 초기화
       console.log("📦 localStorage 초기화 중...");
       localStorage.removeItem("isLoggedIn");
@@ -75,6 +66,7 @@ export const useLogout = (setIsLoggedIn = null, options = {}) => {
       localStorage.removeItem("userId");
       localStorage.removeItem("userDbId");
       localStorage.removeItem("session_token");
+      localStorage.removeItem("userRole");
 
       // sessionStorage도 초기화
       sessionStorage.removeItem("forceLoggedOut");
@@ -82,14 +74,22 @@ export const useLogout = (setIsLoggedIn = null, options = {}) => {
 
       console.log("✓ 저장소 초기화 완료");
 
-      if (showAlert) {
-        alert("로그아웃 되었습니다.");
+      // 로그아웃 완료 상태 반영은 저장소 정리 후에 수행
+      if (setIsLoggedIn) {
+        setIsLoggedIn(false);
       }
-      navigate("/login");
+      window.dispatchEvent(new Event("authStateChanged"));
+
+      console.log("✓ 로그아웃 완료");
+
+      if (showAlert) {
+        toast.success("로그아웃 되었습니다.");
+      }
+      navigate("/login", { replace: true });
     } catch (err) {
       console.error("로그아웃 중 오류:", err);
       if (showAlert) {
-        alert("로그아웃 중 오류가 발생했습니다.");
+        toast.error("로그아웃 중 오류가 발생했습니다.");
       }
     } finally {
       // 다음 로그인/로그아웃 사이클을 위해 잠금 해제

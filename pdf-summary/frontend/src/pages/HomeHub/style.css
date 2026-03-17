@@ -1,0 +1,84 @@
+.hub-wrap {
+  min-height: calc(100vh - 74px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 40px 24px;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(33, 147, 176, 0.12), transparent 30%),
+    radial-gradient(circle at 80% 70%, rgba(109, 213, 237, 0.2), transparent 35%),
+    #efefef;
+  font-family: "Noto Sans KR", sans-serif;
+}
+
+.hub-hero {
+  text-align: center;
+  margin-bottom: 38px;
+}
+
+.hub-hero h1 {
+  margin: 0;
+  font-size: 2.1rem;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  color: #1f2937;
+}
+
+.hub-hero p {
+  margin-top: 10px;
+  color: #4b5563;
+}
+
+.hub-grid {
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 28px;
+}
+
+.hub-card {
+  border: none;
+  border-radius: 18px;
+  min-height: 170px;
+  padding: 24px;
+  text-align: left;
+  background: linear-gradient(145deg, #4b5563, #6b7280);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 16px 30px rgba(17, 24, 39, 0.2);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.hub-card.alt {
+  background: linear-gradient(145deg, #1f2937, #374151);
+}
+
+.hub-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 34px rgba(17, 24, 39, 0.27);
+}
+
+.hub-title {
+  display: block;
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.hub-desc {
+  color: #e5e7eb;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .hub-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hub-hero h1 {
+    font-size: 1.6rem;
+  }
+}

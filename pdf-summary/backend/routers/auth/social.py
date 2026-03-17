@@ -115,5 +115,9 @@ async def google_callback(request: Request, code: str, db: Session = Depends(get
         f"user_id={user.username}&"
         f"user_db_id={user.id}"
     )
+<<<<<<< HEAD
     return RedirectResponse(url=frontend_redirect_url)
 
+=======
+    return RedirectResponse(url=frontend_redirect_url)
+>>>>>>> cdb258ad80fe2d72b52573ec0be94da3b3de2df7

@@ -6,6 +6,7 @@ const Results = ({
   translatingOriginal,
   translatingSummary,
   summarizing,
+  streamingSummary,
   fileName,
   handleTranslate,
   handleSummarizeExtracted,
@@ -47,15 +48,16 @@ const Results = ({
         </div>
       )}
 
+      {/* --- AI 요약 결과 섹션 --- */}
       <hr className="divider" />
       <div className="section-header">
         <span className="section-title">🤖 AI 요약 결과</span>
         <span className="section-meta">
-          {result.model_used || "아직 요약 전"}
+          {summarizing ? "요약 중..." : result.model_used || "아직 요약 전"}
         </span>
       </div>
 
-      {!result.summary && (
+      {!result.summary && !summarizing && (
         <div className="translation-section">
           <button
             className="btn-translate"
@@ -73,7 +75,18 @@ const Results = ({
         </div>
       )}
 
-      {result.summary && <div className="summary-box">{result.summary}</div>}
+      {summarizing && (
+        <div className="summary-box summary-streaming">
+          {streamingSummary || (
+            <span className="summary-waiting">요약을 시작하는 중...</span>
+          )}
+          <span className="typing-cursor" />
+        </div>
+      )}
+
+      {!summarizing && result.summary && (
+        <div className="summary-box">{result.summary}</div>
+      )}
 
       {result.summary && (
         <div className="translation-section">

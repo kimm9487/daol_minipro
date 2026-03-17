@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { buildApiUrl } from "../config/api";
+import toast from "react-hot-toast"; // [추가] alert() 대신 toast 알림 사용
 
 export const useRegister = () => {
   const navigate = useNavigate();
@@ -58,7 +59,7 @@ export const useRegister = () => {
   };
 
   const handleCheckId = async () => {
-    if (!formData.user_id) return alert("아이디를 입력해주세요.");
+    if (!formData.user_id) return toast.error("아이디를 입력해주세요.");
     try {
       const response = await fetch(
         buildApiUrl(`/auth/check-id?user_id=${formData.user_id}`),
@@ -69,12 +70,12 @@ export const useRegister = () => {
         type: data.available ? "success" : "error",
       });
     } catch (err) {
-      alert("서버와 연결할 수 없습니다.");
+      toast.error("서버와 연결할 수 없습니다.");
     }
   };
 
   const handleSendCode = async () => {
-    if (!formData.user_email) return alert("이메일을 입력해주세요.");
+    if (!formData.user_email) return toast.error("이메일을 입력해주세요.");
     try {
       const form = new FormData();
       form.append("email", formData.user_email);
@@ -86,17 +87,17 @@ export const useRegister = () => {
       if (response.ok) {
         setIsCodeSent(true);
         setTimeLeft(300);
-        alert(data.message);
+        toast.success(data.message);
       } else {
-        alert(data.detail || "메일 발송에 실패했습니다.");
+        toast.error(data.detail || "메일 발송에 실패했습니다.");
       }
     } catch (err) {
-      alert("서버와 연결할 수 없습니다.");
+      toast.error("서버와 연결할 수 없습니다.");
     }
   };
 
   const handleVerifyCode = async () => {
-    if (!emailCode) return alert("인증번호를 입력해주세요.");
+    if (!emailCode) return toast.error("인증번호를 입력해주세요.");
     try {
       const form = new FormData();
       form.append("email", formData.user_email);
@@ -109,12 +110,12 @@ export const useRegister = () => {
       if (response.ok) {
         setIsEmailVerified(true);
         setIsCodeSent(false);
-        alert(data.message);
+        toast.success(data.message);
       } else {
-        alert(data.detail || "인증 실패");
+        toast.error(data.detail || "인증 실패");
       }
     } catch (err) {
-      alert("서버와 연결할 수 없습니다.");
+      toast.error("서버와 연결할 수 없습니다.");
     }
   };
 
@@ -140,7 +141,7 @@ export const useRegister = () => {
         body: dataToSend,
       });
       if (response.ok) {
-        alert("회원가입이 완료되었습니다!");
+        toast.success("회원가입이 완료되었습니다!");
         navigate("/login");
       } else {
         const result = await response.json();

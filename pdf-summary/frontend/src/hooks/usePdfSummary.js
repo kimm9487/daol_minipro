@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useSessionValidator } from "./useSessionValidator";
 import { useLogout } from "./useLogout";
 import { API_BASE } from "../config/api";
+import toast from "react-hot-toast"; // [추가] alert() 대신 toast 알림 사용
 
 export const usePdfSummary = () => {
   useSessionValidator();
@@ -31,6 +32,12 @@ export const usePdfSummary = () => {
   const [isDragActive, setIsDragActive] = useState(false);
   const [translatingOriginal, setTranslatingOriginal] = useState(false);
   const [translatingSummary, setTranslatingSummary] = useState(false);
+  const [streamingSummary, setStreamingSummary] = useState("");
+  const [extractionProgress, setExtractionProgress] = useState({
+    mode: null,
+    current: 0,
+    total: 0,
+  });
   const [translations, setTranslations] = useState({
     original: null,
     summary: null,
@@ -76,7 +83,7 @@ export const usePdfSummary = () => {
   useEffect(() => {
     const loadModels = async () => {
       try {
-        const res = await fetch(`${API_BASE}/models`);
+        const res = await fetch(`${API_BASE}/documents/models`);
         if (res.ok) {
           const data = await res.json();
           if (data.models && data.models.length > 0) {
@@ -88,7 +95,7 @@ export const usePdfSummary = () => {
             setSelectedModel(preferred || data.models[0]);
           }
         }
-        const ocrRes = await fetch(`${API_BASE}/ocr-models`);
+        const ocrRes = await fetch(`${API_BASE}/documents/ocr-models`);
         if (ocrRes.ok) {
           const ocrData = await ocrRes.json();
           if (ocrData.ocr_models && ocrData.ocr_models.length > 0) {
@@ -136,6 +143,8 @@ export const usePdfSummary = () => {
     setFileName(selectedFile.name);
     setStatus({ type: "", msg: "" });
     setResult(null);
+    setStreamingSummary("");
+    setExtractionProgress({ mode: null, current: 0, total: 0 });
     setTranslations({ original: null, summary: null });
     setIsImportant(false);
     setDocumentPassword("");
@@ -170,11 +179,10 @@ export const usePdfSummary = () => {
   const handleExtract = async () => {
     if (!file) return;
     setLoading(true);
-    setStatus({
-      type: "info",
-      msg: "선택한 OCR 모델로 문서를 추출 중입니다. 잠시 기다려주세요...",
-    });
+    setStatus({ type: "", msg: "" });
     setResult(null);
+    setStreamingSummary("");
+    setExtractionProgress({ mode: null, current: 0, total: 0 });
     setTranslations({ original: null, summary: null });
     try {
       const userDbId = localStorage.getItem("userDbId");
@@ -195,28 +203,106 @@ export const usePdfSummary = () => {
         isImportant ? String(documentPassword || "") : "",
       );
       formData.append("is_public", isPublic ? "true" : "false");
-      const res = await fetch(`${API_BASE}/extract`, {
+      const res = await fetch(`${API_BASE}/documents/extract`, {
         method: "POST",
         body: formData,
       });
-      const data = await res.json();
+
       if (!res.ok) {
-        const errorMsg =
-          data.detail ||
-          data.message ||
-          JSON.stringify(data) ||
-          "추출 중 오류가 발생했습니다.";
+        let errorMsg = "추출 중 오류가 발생했습니다.";
+        try {
+          const data = await res.json();
+          errorMsg =
+            data.detail || data.message || JSON.stringify(data) || errorMsg;
+        } catch (_) {}
         setStatus({ type: "error", msg: errorMsg });
         return;
       }
-      setResult(data);
-      setStatus({
-        type: "success",
-        msg: "텍스트 추출이 완료되었습니다. 이제 LLM 요약을 실행할 수 있습니다.",
-      });
+
+      if (!res.body) {
+        setStatus({ type: "error", msg: "스트리밍 응답 본문이 없습니다." });
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finalResult = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() || "";
+
+        for (const part of parts) {
+          if (!part.startsWith("data: ")) continue;
+
+          let event;
+          try {
+            event = JSON.parse(part.slice(6));
+          } catch (_) {
+            continue;
+          }
+
+          if (event.type === "start") {
+            const mode = event.ocr_mode
+              ? event.total_pages > 0
+                ? "ocr_page"
+                : "ocr"
+              : "page";
+            setExtractionProgress({
+              mode,
+              current: 0,
+              total: event.total_pages || 0,
+            });
+          } else if (event.type === "page") {
+            setExtractionProgress({
+              mode: "page",
+              current: event.page || 0,
+              total: event.total || 0,
+            });
+          } else if (event.type === "ocr_progress") {
+            setExtractionProgress({
+              mode: "ocr_page",
+              current: event.page || 0,
+              total: event.total || 0,
+            });
+          } else if (event.type === "chunk_start") {
+            setExtractionProgress({
+              mode: "chunk",
+              current: 0,
+              total: event.total_chunks || 0,
+            });
+          } else if (event.type === "chunk") {
+            setExtractionProgress({
+              mode: "chunk",
+              current: event.index || 0,
+              total: event.total || 0,
+            });
+          } else if (event.type === "done") {
+            finalResult = event;
+            setExtractionProgress({ mode: null, current: 0, total: 0 });
+          } else if (event.type === "error") {
+            setStatus({
+              type: "error",
+              msg: event.detail || "추출 중 오류가 발생했습니다.",
+            });
+            setExtractionProgress({ mode: null, current: 0, total: 0 });
+          }
+        }
+      }
+
+      if (finalResult) {
+        setResult(finalResult);
+        setStatus({ type: "success", msg: "텍스트 추출이 완료되었습니다." });
+      }
     } catch (err) {
       console.error("Fetch Error:", err);
       setStatus({ type: "error", msg: "서버 연결 실패: " + err.message });
+      setExtractionProgress({ mode: null, current: 0, total: 0 });
     } finally {
       setLoading(false);
     }
@@ -225,36 +311,82 @@ export const usePdfSummary = () => {
   const handleSummarizeExtracted = async () => {
     if (!result || !result.id) return;
     setSummarizing(true);
-    setStatus({
-      type: "info",
-      msg: "추출된 문서를 LLM이 요약 중입니다. 잠시 기다려주세요...",
-    });
+    setStreamingSummary("");
+    setStatus({ type: "", msg: "" });
     try {
       const userDbId = localStorage.getItem("userDbId");
       const formData = new FormData();
       formData.append("document_id", result.id);
       formData.append("user_id", parseInt(userDbId));
       formData.append("model", selectedModel);
-      const res = await fetch(`${API_BASE}/summarize-document`, {
+      const res = await fetch(`${API_BASE}/documents/summarize-document`, {
         method: "POST",
         body: formData,
       });
-      const data = await res.json();
+
       if (!res.ok) {
-        const errorMsg =
-          data.detail ||
-          data.message ||
-          JSON.stringify(data) ||
-          "요약 중 오류가 발생했습니다.";
+        let errorMsg = "요약 중 오류가 발생했습니다.";
+        try {
+          const data = await res.json();
+          errorMsg =
+            data.detail || data.message || JSON.stringify(data) || errorMsg;
+        } catch (_) {}
         setStatus({ type: "error", msg: errorMsg });
         return;
       }
-      setResult((prev) => ({
-        ...prev,
-        summary: data.summary,
-        model_used: data.model_used,
-        extracted_text: data.extracted_text,
-      }));
+
+      if (!res.body) {
+        setStatus({ type: "error", msg: "스트리밍 응답 본문이 없습니다." });
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let accumulatedText = "";
+      let modelUsed = selectedModel;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() || "";
+
+        for (const part of parts) {
+          if (!part.startsWith("data: ")) continue;
+
+          let event;
+          try {
+            event = JSON.parse(part.slice(6));
+          } catch (_) {
+            continue;
+          }
+
+          if (event.type === "token") {
+            accumulatedText += event.text || "";
+            setStreamingSummary(accumulatedText);
+          } else if (event.type === "done") {
+            modelUsed = event.model_used || selectedModel;
+          } else if (event.type === "error") {
+            setStatus({
+              type: "error",
+              msg: event.detail || "요약 중 오류가 발생했습니다.",
+            });
+            setStreamingSummary("");
+          }
+        }
+      }
+
+      if (accumulatedText) {
+        setResult((prev) => ({
+          ...prev,
+          summary: accumulatedText,
+          model_used: modelUsed,
+        }));
+      }
+      setStreamingSummary("");
       setStatus({ type: "success", msg: "LLM 요약이 완료되었습니다." });
     } catch (err) {
       console.error("요약 오류:", err);
@@ -262,6 +394,7 @@ export const usePdfSummary = () => {
         type: "error",
         msg: "요약 중 오류가 발생했습니다. 에러: " + err.message,
       });
+      setStreamingSummary("");
     } finally {
       setSummarizing(false);
     }
@@ -279,7 +412,7 @@ export const usePdfSummary = () => {
       formData.append("user_id", parseInt(userDbId));
       formData.append("text_type", textType);
       formData.append("model", selectedModel);
-      const res = await fetch(`${API_BASE}/translate`, {
+      const res = await fetch(`${API_BASE}/documents/translate`, {
         method: "POST",
         body: formData,
       });
@@ -332,6 +465,8 @@ export const usePdfSummary = () => {
     isDragActive,
     translatingOriginal,
     translatingSummary,
+    streamingSummary,
+    extractionProgress,
     translations,
     isImportant,
     setIsImportant,

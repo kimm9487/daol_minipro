@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { buildApiUrl } from "../config/api";
+import toast from "react-hot-toast"; // [추가] alert() 대신 toast 알림 사용
 
 export const useDocumentHistory = () => {
   const [userInfo, setUserInfo] = useState({
@@ -34,7 +35,9 @@ export const useDocumentHistory = () => {
       const historyUrl =
         userRole === "admin"
           ? buildApiUrl("/api/admin/documents?limit=1000")
-          : buildApiUrl(`/api/documents/${userDbId}?limit=1000`);
+          : buildApiUrl(
+              `/api/documents/users/${userDbId}/documents?limit=1000`,
+            );
 
       const historyResponse = await fetch(historyUrl, { cache: "no-store" });
       if (historyResponse.ok) {
@@ -44,6 +47,13 @@ export const useDocumentHistory = () => {
             ...doc,
             date: doc.created_at ? doc.created_at.split("T")[0] : "",
             fileName: doc.filename,
+            model: doc.model_used || doc.translation_model || "미선택",
+            status:
+              doc.summary &&
+              String(doc.summary).trim() &&
+              doc.summary !== "요약 내용이 없습니다."
+                ? "완료"
+                : "추출완료",
             is_public:
               String(doc.is_public) === "true" || String(doc.is_public) === "1",
             is_important:
@@ -77,11 +87,11 @@ export const useDocumentHistory = () => {
       if (response.ok) {
         return await response.json();
       } else {
-        alert("문서를 불러올 수 없습니다.");
+        toast.error("문서를 불러올 수 없습니다.");
         return null;
       }
     } catch (error) {
-      alert("문서를 불러올 수 없습니다.");
+      toast.error("문서를 불러올 수 없습니다.");
       return null;
     }
   };
@@ -90,7 +100,7 @@ export const useDocumentHistory = () => {
     try {
       const userDbId = localStorage.getItem("userDbId");
       const response = await fetch(
-        buildApiUrl(`/api/summarize/${updatedData.docId}`),
+        buildApiUrl(`/api/documents/documents/${updatedData.docId}`),
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -117,14 +127,14 @@ export const useDocumentHistory = () => {
               : doc,
           ),
         );
-        alert("문서 정보가 성공적으로 수정되었습니다.");
+        toast.success("문서 정보가 성공적으로 수정되었습니다.");
         return true;
       } else {
-        alert("문서 수정 실패");
+        toast.error("문서 수정 실패");
         return false;
       }
     } catch (error) {
-      alert("오류가 발생했습니다.");
+      toast.error("오류가 발생했습니다.");
       return false;
     }
   };
@@ -133,21 +143,24 @@ export const useDocumentHistory = () => {
     if (!window.confirm(`"${fileName}"을(를) 삭제하시겠습니까?`)) return false;
     try {
       const userDbId = localStorage.getItem("userDbId");
-      const response = await fetch(buildApiUrl(`/api/summarize/${docId}`), {
-        method: "DELETE",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `user_id=${userDbId}`,
-      });
+      const response = await fetch(
+        buildApiUrl(`/api/documents/documents/${docId}`),
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ user_id: String(userDbId) }).toString(),
+        },
+      );
       if (response.ok) {
         setHistory((prev) => prev.filter((doc) => doc.id !== docId));
-        alert("문서가 삭제되었습니다.");
+        toast.success("문서가 삭제되었습니다.");
         return true;
       } else {
-        alert("문서 삭제 실패");
+        toast.error("문서 삭제 실패");
         return false;
       }
     } catch (error) {
-      alert("오류가 발생했습니다.");
+      toast.error("오류가 발생했습니다.");
       return false;
     }
   };
@@ -157,13 +170,13 @@ export const useDocumentHistory = () => {
     const userDbId = localStorage.getItem("userDbId");
     try {
       const response = await fetch(
-        buildApiUrl(`/api/document/${item.id}/public`),
+        buildApiUrl(`/api/documents/documents/${item.id}/public`),
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             user_id: parseInt(userDbId),
-            is_public: newPublicStatus ? 1 : 0,
+            is_public: newPublicStatus,
           }),
         },
       );
@@ -191,11 +204,11 @@ export const useDocumentHistory = () => {
           method: "DELETE",
         });
         if (response.ok) {
-          alert("회원 탈퇴가 완료되었습니다.");
+          toast.success("회원 탈퇴가 완료되었습니다.");
           localStorage.clear();
           window.location.href = "/";
         } else {
-          alert("탈퇴 처리 중 오류가 발생했습니다.");
+          toast.error("탈퇴 처리 중 오류가 발생했습니다.");
         }
       } catch (error) {}
     }

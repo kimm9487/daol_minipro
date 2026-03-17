@@ -1,5 +1,6 @@
 import time
 import numpy as np
+import os
 
 from fastapi import HTTPException, UploadFile
 
@@ -14,6 +15,13 @@ def _build_reader(langs: list):
     except ImportError as exc:
         raise HTTPException(status_code=503, detail=f"easyocr 미설치: {exc}")
 
+    # 기본은 GPU를 시도하고, GPU 사용 불가 환경에서는 CPU로 자동 폴백합니다.
+    use_gpu = os.getenv("OCR_USE_GPU", "true").lower() in {"1", "true", "yes", "on"}
+    if use_gpu:
+        try:
+            return easyocr.Reader(langs, gpu=True)
+        except Exception as exc:
+            print(f"⚠️ EasyOCR GPU 초기화 실패, CPU로 폴백합니다: {exc}")
     return easyocr.Reader(langs, gpu=False)
 
 

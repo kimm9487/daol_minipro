@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at DATETIME,
   last_login_at DATETIME,
   is_active TINYINT(1),
-  
+  provider VARCHAR(50) NOT NULL DEFAULT 'local',
   PRIMARY KEY (id),
   UNIQUE KEY ix_users_email (email),
   UNIQUE KEY ix_users_username (username),
@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS users (
   KEY ix_users_role (role),
   KEY ix_users_id (id)
 ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
+DB_HOST=192.168.0.151
 -- ========================================
 -- 3. 사용자 세션 테이블
 -- ========================================
@@ -118,6 +118,8 @@ CREATE TABLE IF NOT EXISTS pdf_documents (
 -- ========================================
 -- 5-1. 기존 테이블에 컬럼 추가 (마이그레이션)
 -- ========================================
+ALTER TABLE users ADD COLUMN IF NOT EXISTS provider VARCHAR(50) NOT NULL DEFAULT 'local';
+
 ALTER TABLE pdf_documents ADD COLUMN IF NOT EXISTS ocr_model VARCHAR(50) COMMENT '텍스트 추출에 사용된 OCR 모델' AFTER summary;
 ALTER TABLE pdf_documents ADD COLUMN IF NOT EXISTS category ENUM('강의','법률안','보고서','기타') DEFAULT '기타' NOT NULL COMMENT '문서 카테고리' AFTER successful_pages;
 ALTER TABLE pdf_documents ADD INDEX IF NOT EXISTS ix_pdf_documents_category (category);
