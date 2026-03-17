@@ -1,24 +1,33 @@
 // src/hooks/useRegister.js
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { buildApiUrl } from "../config/api";
 
 export const useRegister = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const initialEmail = searchParams.get("email") || "";
+  const initialName = searchParams.get("name") || "";
+  const initialProvider = searchParams.get("provider") || "local";
 
   const [formData, setFormData] = useState({
     user_id: "",
     user_pw: "",
     user_pw_confirm: "",
-    user_name: "",
-    user_email: "",
+    user_name: initialName,
+    user_email: initialEmail,
   });
+  const [provider] = useState(initialProvider); // 소셜 로그인 제공자 상태 추가
 
   const [emailCode, setEmailCode] = useState("");
   const [isCodeSent, setIsCodeSent] = useState(false);
-  const [isEmailVerified, setIsEmailVerified] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(300);
 
+  const [isEmailVerified, setIsEmailVerified] = useState(
+    initialProvider === "google",
+  ); // 구글 소셜 로그인은 이메일이 이미 검증된 것으로 간주
+
+  const [timeLeft, setTimeLeft] = useState(300);
   const [error, setError] = useState("");
   const [idMessage, setIdMessage] = useState({ text: "", type: "" });
 
@@ -124,7 +133,7 @@ export const useRegister = () => {
     dataToSend.append("user_pw", formData.user_pw);
     dataToSend.append("user_name", formData.user_name);
     dataToSend.append("user_email", formData.user_email);
-
+    dataToSend.append("provider", provider); // 소셜 로그인 제공자 정보도 함께 전송
     try {
       const response = await fetch(buildApiUrl("/auth/register"), {
         method: "POST",
@@ -151,6 +160,7 @@ export const useRegister = () => {
     timeLeft,
     error,
     idMessage,
+    provider,
     formatTime,
     handleChange,
     handleCheckId,
