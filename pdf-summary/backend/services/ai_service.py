@@ -3,7 +3,7 @@ import httpx
 from fastapi import HTTPException
 
 # Ollama 기본 설정
-#OLLAMA_BASE_URL = "http://localhost:11434"
+OLLAMA_BASE_URL = "http://localhost:11434"
 OLLAMA_BASE_URL = "http://host.docker.internal:11434"  #Docker로 실행시 코드수정 필요 //이재윤
 DEFAULT_MODEL = "gemma3:latest"  
 
@@ -58,6 +58,66 @@ async def summarize_text(text: str, model: str = DEFAULT_MODEL) -> str:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI 요약 중 오류 발생: {str(e)}")
+
+
+async def summarize_with_instruction(
+    text: str,
+    instruction: str,
+    model: str = DEFAULT_MODEL,
+) -> str:
+    """사용자 지시를 반영해 문서 텍스트를 요약/정리합니다."""
+    MAX_CHARS = 12000
+    if len(text) > MAX_CHARS:
+        text = text[:MAX_CHARS] + "\n\n[... 이하 내용 생략 ...]"
+
+    clean_instruction = (instruction or "핵심 내용을 짧게 요약해줘").strip()
+    if not clean_instruction:
+        clean_instruction = "핵심 내용을 짧게 요약해줘"
+
+    prompt = f"""당신은 문서 분석 도우미입니다.
+아래 사용자의 요청을 가장 우선으로 반영해 한국어로 답변하세요.
+
+[사용자 요청]
+{clean_instruction}
+
+[문서 내용]
+{text}
+
+[응답 규칙]
+- 요청이 요약이면 핵심 위주로 간결하게 작성
+- 요청이 목록/표 형태를 원하면 그 형식에 맞게 작성
+- 문서에 없는 내용은 추측하지 않음
+"""
+
+    try:
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            response = await client.post(
+                f"{OLLAMA_BASE_URL}/api/generate",
+                json={
+                    "model": model,
+                    "prompt": prompt,
+                    "stream": False,
+                },
+            )
+
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Ollama API 오류: {response.status_code} - 모델({model})이 설치되어 있는지 확인하세요.",
+                )
+
+            data = response.json()
+            return data.get("response", "응답을 가져올 수 없습니다.")
+
+    except httpx.ConnectError:
+        raise HTTPException(
+            status_code=503,
+            detail="Ollama 서버에 연결할 수 없습니다. 서버 주소(OLLAMA_BASE_URL) 또는 컨테이너 상태를 확인해주세요.",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"대화형 요약 중 오류 발생: {str(e)}")
 
 
 async def translate_to_english(text: str, model: str = DEFAULT_MODEL) -> str:

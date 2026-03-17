@@ -10,6 +10,8 @@ import Header from "./components/Header";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import PdfSummary from "./pages/PdfSummary";
+import HomeHub from "./pages/HomeHub";
+import ChatSummary from "./pages/ChatSummary";
 import MyPage from "./pages/MyPage"; // 이재윤 MyPage 컴포넌트 분리
 import AdminDashboard from "./pages/AdminDashboard";
 import UserList from "./pages/UserList"; // 정재훈 추가 (2026-02-27): 전체 요약/사용자 목록 조회 페이지 (관리자 전용)
@@ -96,7 +98,15 @@ function App() {
           path="/userlist"
           element={<ProtectedRoute component={UserList} />}
         />
-        <Route path="/" element={<ProtectedRoute component={PdfSummary} />} />
+        <Route path="/" element={<ProtectedRoute component={HomeHub} />} />
+        <Route
+          path="/pdf-summary"
+          element={<ProtectedRoute component={PdfSummary} />}
+        />
+        <Route
+          path="/chat-summary"
+          element={<ProtectedRoute component={ChatSummary} />}
+        />
         <Route path="/mypage" element={<ProtectedRoute component={MyPage} />} />
         <Route
           path="/admin"

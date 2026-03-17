@@ -3,12 +3,123 @@ from sqlalchemy.orm import Session
 import json
 import time
 import datetime
+import base64
+from pydantic import BaseModel
+
+from celery.result import AsyncResult
 
 from services.pdf_service import extract_text_from_pdf
-from services.ai_service import summarize_text, categorize_document
+from services.ai_service import summarize_text, summarize_with_instruction, categorize_document
 from database import get_db, PdfDocument, can_user_access_document, log_admin_activity
+from celery_app import celery_app
+from tasks.document_tasks import extract_document_task, summarize_document_task
 
 summarize_router = APIRouter(tags=["Summarization & Extraction"])
+
+
+class ChatSummarizeRequest(BaseModel):
+    document_text: str
+    instruction: str
+    model: str = "gemma3:latest"
+
+
+@summarize_router.post("/chat-summarize")
+async def chat_summarize(request: ChatSummarizeRequest):
+    """사용자 지시 기반 대화형 요약 응답을 반환합니다."""
+    text = (request.document_text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="문서 텍스트가 비어있습니다.")
+
+    answer = await summarize_with_instruction(
+        text=text,
+        instruction=request.instruction,
+        model=request.model,
+    )
+    return {
+        "answer": answer,
+        "model_used": request.model,
+    }
+
+
+@summarize_router.post("/extract/async")
+async def extract_pdf_async(
+    request: Request,
+    file: UploadFile = File(...),
+    user_id: int = Form(...),
+    ocr_model: str = Form(default="pypdf2"),
+    is_important: bool = Form(default=False),
+    password: str = Form(default=None),
+    is_public: bool = Form(default=True),
+):
+    """(Queue) Extracts text asynchronously and returns a Celery task ID."""
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(status_code=422, detail="파일이 비어있습니다.")
+
+    encoded = base64.b64encode(file_bytes).decode("ascii")
+    task = extract_document_task.apply_async(
+        kwargs={
+            "file_b64": encoded,
+            "filename": file.filename or "uploaded_file",
+            "user_id": user_id,
+            "ocr_model": ocr_model,
+            "is_important": is_important,
+            "password": password,
+            "is_public": is_public,
+            "request_ip": request.client.host if request.client else "unknown",
+        },
+        queue="ocr",
+    )
+
+    return {
+        "task_id": task.id,
+        "status": "PENDING",
+        "queue": "ocr",
+        "message": "텍스트 추출 작업이 큐에 등록되었습니다.",
+    }
+
+
+@summarize_router.post("/summarize-document/async")
+async def summarize_extracted_document_async(
+    request: Request,
+    document_id: int = Form(...),
+    user_id: int = Form(...),
+    model: str = Form(default="gemma3:latest"),
+):
+    """(Queue) Summarizes an extracted document asynchronously and returns a task ID."""
+    task = summarize_document_task.apply_async(
+        kwargs={
+            "document_id": document_id,
+            "user_id": user_id,
+            "model": model,
+            "request_ip": request.client.host if request.client else "unknown",
+        },
+        queue="llm",
+    )
+
+    return {
+        "task_id": task.id,
+        "status": "PENDING",
+        "queue": "llm",
+        "message": "문서 요약 작업이 큐에 등록되었습니다.",
+    }
+
+
+@summarize_router.get("/tasks/{task_id}")
+async def get_task_status(task_id: str):
+    """Returns state/result for a queued OCR/LLM task."""
+    result = AsyncResult(task_id, app=celery_app)
+    response = {
+        "task_id": task_id,
+        "status": result.state,
+    }
+
+    if result.state == "SUCCESS":
+        response["result"] = result.result
+    elif result.state == "FAILURE":
+        response["error"] = str(result.result)
+
+    return response
 
 
 # Helper function to create a document entry before summarization

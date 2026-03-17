@@ -59,7 +59,7 @@ export const usePdfSummary = () => {
     useEffect(() => {
         const loadModels = async () => {
             try {
-                const res = await fetch(`${API_BASE}/models`);
+                const res = await fetch(`${API_BASE}/documents/models`);
                 if (res.ok) {
                     const data = await res.json();
                     if (data.models && data.models.length > 0) {
@@ -69,7 +69,7 @@ export const usePdfSummary = () => {
                         setSelectedModel(preferred || data.models[0]);
                     }
                 }
-                const ocrRes = await fetch(`${API_BASE}/ocr-models`);
+                const ocrRes = await fetch(`${API_BASE}/documents/ocr-models`);
                 if (ocrRes.ok) {
                     const ocrData = await ocrRes.json();
                     if (ocrData.ocr_models && ocrData.ocr_models.length > 0) {
@@ -158,7 +158,7 @@ export const usePdfSummary = () => {
             formData.append("is_important", isImportant ? "true" : "false");
             formData.append("password", isImportant ? String(documentPassword || "") : "");
             formData.append("is_public", isPublic ? "true" : "false");
-            const res = await fetch(`${API_BASE}/extract`, { method: "POST", body: formData });
+            const res = await fetch(`${API_BASE}/documents/extract`, { method: "POST", body: formData });
             const data = await res.json();
             if (!res.ok) {
                 const errorMsg = data.detail || data.message || JSON.stringify(data) || "추출 중 오류가 발생했습니다.";
@@ -185,7 +185,7 @@ export const usePdfSummary = () => {
             formData.append("document_id", result.id);
             formData.append("user_id", parseInt(userDbId));
             formData.append("model", selectedModel);
-            const res = await fetch(`${API_BASE}/summarize-document`, { method: "POST", body: formData });
+            const res = await fetch(`${API_BASE}/documents/summarize-document`, { method: "POST", body: formData });
             const data = await res.json();
             if (!res.ok) {
                 const errorMsg = data.detail || data.message || JSON.stringify(data) || "요약 중 오류가 발생했습니다.";
@@ -214,7 +214,7 @@ export const usePdfSummary = () => {
             formData.append("user_id", parseInt(userDbId));
             formData.append("text_type", textType);
             formData.append("model", selectedModel);
-            const res = await fetch(`${API_BASE}/translate`, { method: "POST", body: formData });
+            const res = await fetch(`${API_BASE}/documents/translate`, { method: "POST", body: formData });
             const data = await res.json();
             if (!res.ok) {
                 throw new Error(data.detail || "번역 중 오류가 발생했습니다.");

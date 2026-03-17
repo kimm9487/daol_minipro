@@ -8,7 +8,7 @@ const UserManagement = () => {
     const loadAllUsers = async () => {
         setLoading(true);
         try {
-            const response = await fetch(buildApiUrl('/auth/users'), {
+            const response = await fetch(buildApiUrl('/api/admin/users/'), {
                 cache: 'no-store'
             });
             if (!response.ok) {
@@ -40,7 +40,7 @@ const UserManagement = () => {
             const formData = new FormData();
             formData.append('admin_user_id', adminId);
 
-            const response = await fetch(buildApiUrl(`/auth/users/${userId}`), {
+            const response = await fetch(buildApiUrl(`/api/admin/users/${userId}`), {
                 method: 'DELETE',
                 body: formData
             });

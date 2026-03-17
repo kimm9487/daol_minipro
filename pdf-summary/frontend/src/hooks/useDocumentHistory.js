@@ -34,7 +34,7 @@ export const useDocumentHistory = () => {
       const historyUrl =
         userRole === "admin"
           ? buildApiUrl("/api/admin/documents?limit=1000")
-          : buildApiUrl(`/api/documents/${userDbId}?limit=1000`);
+          : buildApiUrl(`/api/documents/users/${userDbId}/documents?limit=1000`);
 
       const historyResponse = await fetch(historyUrl, { cache: "no-store" });
       if (historyResponse.ok) {
@@ -44,6 +44,11 @@ export const useDocumentHistory = () => {
             ...doc,
             date: doc.created_at ? doc.created_at.split("T")[0] : "",
             fileName: doc.filename,
+            model: doc.model_used || doc.translation_model || "미선택",
+            status:
+              doc.summary && String(doc.summary).trim() && doc.summary !== "요약 내용이 없습니다."
+                ? "완료"
+                : "추출완료",
             is_public:
               String(doc.is_public) === "true" ||
               String(doc.is_public) === "1",
@@ -72,7 +77,7 @@ export const useDocumentHistory = () => {
     try {
       const userDbId = localStorage.getItem("userDbId");
       const response = await fetch(
-        buildApiUrl(`/api/document/${docId}?user_id=${userDbId}`),
+        buildApiUrl(`/api/documents/documents/${docId}?user_id=${userDbId}`),
         { method: "GET" }
       );
       if (response.ok) {
@@ -91,7 +96,7 @@ export const useDocumentHistory = () => {
     try {
       const userDbId = localStorage.getItem("userDbId");
       const response = await fetch(
-        buildApiUrl(`/api/summarize/${updatedData.docId}`),
+        buildApiUrl(`/api/documents/documents/${updatedData.docId}`),
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -134,10 +139,10 @@ export const useDocumentHistory = () => {
     if (!window.confirm(`"${fileName}"을(를) 삭제하시겠습니까?`)) return false;
     try {
       const userDbId = localStorage.getItem("userDbId");
-      const response = await fetch(buildApiUrl(`/api/summarize/${docId}`), {
+      const response = await fetch(buildApiUrl(`/api/documents/documents/${docId}`), {
         method: "DELETE",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `user_id=${userDbId}`,
+        body: new URLSearchParams({ user_id: String(userDbId) }).toString(),
       });
       if (response.ok) {
         setHistory((prev) => prev.filter((doc) => doc.id !== docId));
@@ -158,13 +163,13 @@ export const useDocumentHistory = () => {
     const userDbId = localStorage.getItem("userDbId");
     try {
       const response = await fetch(
-        buildApiUrl(`/api/document/${item.id}/public`),
+        buildApiUrl(`/api/documents/documents/${item.id}/public`),
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             user_id: parseInt(userDbId),
-            is_public: newPublicStatus ? 1 : 0,
+            is_public: newPublicStatus,
           }),
         }
       );

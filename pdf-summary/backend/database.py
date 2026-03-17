@@ -7,13 +7,14 @@ import datetime
 import os
 
 # 환경 변수 로드 (.env 파일이 없어도 기본값으로 동작하도록 설정)
-load_dotenv()
+# 도커 컨테이너 재생성 없이 restart만 하는 경우를 위해 .env 값을 우선 적용합니다.
+load_dotenv(override=True)
 
 # 데이터베이스 접속 정보 (전달해주신 정보로 업데이트)
 DB_HOST     = os.getenv("DB_HOST", "192.168.0.151")
 DB_PORT     = os.getenv("DB_PORT", "3306")
-DB_USER     = os.getenv("DB_USER", "appuser1")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "1111")
+DB_USER     = os.getenv("DB_USER", "root")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "9487")
 DB_NAME     = os.getenv("DB_NAME", "pdf_summary")
 
 # SQLAlchemy 연결 URL

@@ -1,4 +1,5 @@
 import time
+import os
 
 from fastapi import HTTPException, UploadFile
 import numpy as np
@@ -16,6 +17,15 @@ def _build_reader(lang: str):
 
     try:
         # PaddleOCR v3 uses `device` instead of deprecated `use_gpu`.
+        use_gpu = os.getenv("OCR_USE_GPU", "true").lower() in {"1", "true", "yes", "on"}
+        preferred_device = os.getenv("PADDLE_DEVICE", "gpu:0" if use_gpu else "cpu")
+
+        if use_gpu:
+            try:
+                return PaddleOCR(use_angle_cls=True, lang=lang, device=preferred_device)
+            except Exception as exc:
+                print(f"⚠️ PaddleOCR GPU 초기화 실패, CPU로 폴백합니다: {exc}")
+
         return PaddleOCR(use_angle_cls=True, lang=lang, device="cpu")
     except ValueError as exc:
         if "Unknown argument: use_gpu" in str(exc):
