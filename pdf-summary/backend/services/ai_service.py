@@ -22,6 +22,17 @@ CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "documents")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
 RAG_TOP_K = int(os.getenv("RAG_TOP_K", "4"))
 
+SMALLTALK_PATTERNS = [
+    r"^(안녕|안녕하세요|ㅎㅇ|hello|hi)\W*$",
+    r"^(고마워|감사해|감사합니다|thanks|thank you)\W*$",
+    r"^(이제\s*)?(물어보면|질문하면)\s*(되나|될까|돼|되나요)\W*$",
+    r"^(대화|잡담)\s*(가능|돼|되나|할 수 있어)\W*$",
+]
+
+DOCUMENT_TASK_KEYWORDS = [
+    "요약", "정리", "설명", "분석", "번역", "추출", "문서", "pdf", "핵심", "포인트", "비교", "근거", "찾아줘", "작성", "bullet",
+]
+
 
 def _split_text_for_rag(text: str, chunk_size: int = 1200, overlap: int = 200) -> List[str]:
     chunks = []
@@ -39,6 +50,34 @@ def _split_text_for_rag(text: str, chunk_size: int = 1200, overlap: int = 200) -
             break
         start = next_start
     return chunks
+
+
+def _is_smalltalk_instruction(instruction: str) -> bool:
+    text = (instruction or "").strip()
+    if not text:
+        return False
+
+    normalized = re.sub(r"\s+", " ", text.lower())
+    if any(re.match(pattern, normalized) for pattern in SMALLTALK_PATTERNS):
+        return True
+
+    has_doc_keyword = any(keyword in normalized for keyword in DOCUMENT_TASK_KEYWORDS)
+    has_casual_marker = any(marker in normalized for marker in ["되나", "될까", "가능", "괜찮", "물어봐", "질문해도", "대화"])
+    return (not has_doc_keyword) and has_casual_marker and len(normalized) <= 40
+
+
+def _smalltalk_response(instruction: str) -> str:
+    normalized = re.sub(r"\s+", " ", (instruction or "").strip().lower())
+
+    if any(token in normalized for token in ["안녕", "hello", "hi", "ㅎㅇ"]):
+        return "안녕하세요. 편하게 말씀해 주세요."
+    if any(token in normalized for token in ["고마워", "감사", "thanks", "thank you"]):
+        return "천만에요. 필요한 내용만 정확히 도와드릴게요."
+    if any(token in normalized for token in ["물어보면", "질문하면", "질문해도", "되나", "될까", "되나요"]):
+        return "네, 이제 물어보셔도 됩니다. 원하시는 내용만 말씀해 주세요."
+    if any(token in normalized for token in ["대화", "잡담"]):
+        return "네, 일상대화도 가능합니다. 편하게 말씀해 주세요."
+    return "네, 요청하신 내용만 간단히 답변드릴게요."
 
 
 def _sanitize_collection_suffix(value: str) -> str:
@@ -302,6 +341,9 @@ async def summarize_with_instruction(
     if not clean_instruction:
         clean_instruction = "핵심 내용을 짧게 요약해줘"
 
+    if _is_smalltalk_instruction(clean_instruction):
+        return _smalltalk_response(clean_instruction)
+
     selected_model = LORA_MODEL_NAME if use_lora else model
     if not selected_model:
         selected_model = DEFAULT_MODEL
@@ -336,6 +378,8 @@ async def summarize_with_instruction(
 
 [답변 규칙]
 - 사용자 요청이 최우선입니다. 요청한 것만 답변하세요.
+- 요청이 확인/허용/짧은 일상대화라면 한두 문장으로만 답변하세요.
+- 요청하지 않은 배경 설명, 단계 나열, 추가 정리는 금지합니다.
 - 모델 자신에 관한 질문(예: "너는 뭐야?", "무슨 모델이야?" 등)은 문서와 무관하게 직접 답변하세요.
 - 요약을 명시적으로 요청했을 때만 문서를 요약하세요.
 - 특정 내용을 질문하면 해당 내용만 문서에서 찾아 답하세요.
@@ -362,8 +406,6 @@ async def summarize_with_instruction(
 
             data = response.json()
             answer = data.get("response", "응답을 가져올 수 없습니다.")
-            if rag_count > 0:
-                answer = f"{answer}\n\n(참고 문맥 {rag_count}개 기반)"
             return answer
 
     except httpx.ConnectError:
@@ -393,6 +435,10 @@ async def summarize_with_instruction_stream(
     clean_instruction = (instruction or "핵심 내용을 짧게 요약해줘").strip()
     if not clean_instruction:
         clean_instruction = "핵심 내용을 짧게 요약해줘"
+
+    if _is_smalltalk_instruction(clean_instruction):
+        yield _smalltalk_response(clean_instruction)
+        return
 
     selected_model = LORA_MODEL_NAME if use_lora else model
     if not selected_model:
@@ -429,6 +475,8 @@ async def summarize_with_instruction_stream(
 [답변 규칙]
 - 사용자 요청이 최우선입니다. 요청한 것만 답변하세요.
 - 무조건 한국어로 답변하세요.
+- 요청이 확인/허용/짧은 일상대화라면 한두 문장으로만 답변하세요.
+- 요청하지 않은 배경 설명, 단계 나열, 추가 정리는 금지합니다.
 - 모델 자신에 관한 질문(예: "너는 뭐야?", "무슨 모델이야?" 등)은 문서와 무관하게 직접 답변하세요.
 - 요약을 명시적으로 요청했을 때만 문서를 요약하세요.
 - 특정 내용을 질문하면 해당 내용만 문서에서 찾아 답하세요.
@@ -470,9 +518,6 @@ async def summarize_with_instruction_stream(
 
                     if payload.get("done"):
                         break
-
-        if rag_count > 0:
-            yield f"\n\n(참고 문맥 {rag_count}개 기반)"
 
     except httpx.ConnectError:
         raise HTTPException(

@@ -1,8 +1,59 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE } from "../../config/api";
 import "./style.css";
 
 const CHAT_DEFAULT_MODEL = "qwen2.5:3b-instruct";
+
+const IGNORED_PROMPT_PREFIXES = [
+  "제공된 텍스트를 요약하세요",
+  "요약에 포함되어야 할 내용:",
+  "목표 길이:",
+  "요약 형식:",
+];
+
+const formatFileSize = (bytes = 0) => {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+};
+
+const stripInstructionEcho = (text) => {
+  if (!text) return text;
+
+  const normalized = text.replace(/\r/g, "");
+  const lines = normalized.split("\n");
+  const firstMeaningfulIndex = lines.findIndex((line) => line.trim().length > 0);
+
+  if (firstMeaningfulIndex === -1) return normalized;
+
+  const firstMeaningfulLine = lines[firstMeaningfulIndex].trim();
+  const shouldStrip = IGNORED_PROMPT_PREFIXES.some((prefix) =>
+    firstMeaningfulLine.startsWith(prefix)
+  );
+
+  if (!shouldStrip) return normalized;
+
+  let removeUntil = firstMeaningfulIndex;
+  while (removeUntil < lines.length) {
+    const current = lines[removeUntil].trim();
+    if (!current) {
+      removeUntil += 1;
+      continue;
+    }
+
+    const isIgnored = IGNORED_PROMPT_PREFIXES.some((prefix) => current.startsWith(prefix));
+    if (!isIgnored) break;
+    removeUntil += 1;
+  }
+
+  return lines.slice(removeUntil).join("\n").trimStart();
+};
+
+const extractDropFile = (fileList) => {
+  if (!fileList || fileList.length === 0) return null;
+  return fileList[0] || null;
+};
 
 const ChatSummary = () => {
   const [file, setFile] = useState(null);
@@ -25,6 +76,9 @@ const ChatSummary = () => {
   const [loadingChat, setLoadingChat] = useState(false);
   const [useRag, setUseRag] = useState(true);
   const [useLora, setUseLora] = useState(false);
+  const [isGlobalDragging, setIsGlobalDragging] = useState(false);
+  const [waitingFirstToken, setWaitingFirstToken] = useState(false);
+  const dragDepthRef = useRef(0);
 
   useEffect(() => {
     const loadModels = async () => {
@@ -60,16 +114,64 @@ const ChatSummary = () => {
     loadModels();
   }, []);
 
+  useEffect(() => {
+    const preventDefaults = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    const handleDragEnter = (event) => {
+      preventDefaults(event);
+      dragDepthRef.current += 1;
+      setIsGlobalDragging(true);
+    };
+
+    const handleDragOver = (event) => {
+      preventDefaults(event);
+      if (!isGlobalDragging) setIsGlobalDragging(true);
+    };
+
+    const handleDragLeave = (event) => {
+      preventDefaults(event);
+      dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+      if (dragDepthRef.current === 0) {
+        setIsGlobalDragging(false);
+      }
+    };
+
+    const handleDrop = (event) => {
+      preventDefaults(event);
+      dragDepthRef.current = 0;
+      setIsGlobalDragging(false);
+      const droppedFile = extractDropFile(event.dataTransfer?.files);
+      if (droppedFile) {
+        setFile(droppedFile);
+      }
+    };
+
+    window.addEventListener("dragenter", handleDragEnter);
+    window.addEventListener("dragover", handleDragOver);
+    window.addEventListener("dragleave", handleDragLeave);
+    window.addEventListener("drop", handleDrop);
+
+    return () => {
+      window.removeEventListener("dragenter", handleDragEnter);
+      window.removeEventListener("dragover", handleDragOver);
+      window.removeEventListener("dragleave", handleDragLeave);
+      window.removeEventListener("drop", handleDrop);
+    };
+  }, [isGlobalDragging]);
+
   const isReadyForChat = useMemo(() => extractedText.trim().length > 0, [extractedText]);
 
-  const appendMessage = (role, content) => {
-    setMessages((prev) => [...prev, { role, content }]);
+  const appendMessage = (role, content, meta = null) => {
+    setMessages((prev) => [...prev, { role, content, meta }]);
   };
 
   const appendAssistantToken = (token) => {
     setMessages((prev) => {
       if (prev.length === 0) {
-        return [...prev, { role: "assistant", content: token }];
+        return [...prev, { role: "assistant", content: stripInstructionEcho(token) }];
       }
 
       const next = [...prev];
@@ -77,9 +179,10 @@ const ChatSummary = () => {
       const last = next[lastIndex];
 
       if (last.role === "assistant") {
-        next[lastIndex] = { ...last, content: `${last.content}${token}` };
+        const merged = `${last.content}${token}`;
+        next[lastIndex] = { ...last, content: stripInstructionEcho(merged) };
       } else {
-        next.push({ role: "assistant", content: token });
+        next.push({ role: "assistant", content: stripInstructionEcho(token) });
       }
 
       return next;
@@ -112,10 +215,11 @@ const ChatSummary = () => {
       }
 
       setExtractedText(data.extracted_text || "");
-      appendMessage(
-        "assistant",
-        `텍스트 추출 완료: ${(data.filename || file.name)} / 문자수 ${data.extraction_info?.char_count || 0}`
-      );
+      appendMessage("assistant", "파일 텍스트 추출이 완료되었습니다.", {
+        type: "file",
+        fileName: data.filename || file.name,
+        fileSize: formatFileSize(file.size),
+      });
     } catch (error) {
       appendMessage("assistant", `추출 실패: ${error.message}`);
     } finally {
@@ -137,6 +241,7 @@ const ChatSummary = () => {
     }
 
     setLoadingChat(true);
+    setWaitingFirstToken(true);
     try {
       appendMessage("assistant", "");
 
@@ -155,6 +260,7 @@ const ChatSummary = () => {
         }),
       });
       if (!response.ok) {
+        setWaitingFirstToken(false);
         const data = await response.json().catch(() => ({}));
         setMessages((prev) => {
           const next = [...prev];
@@ -171,6 +277,7 @@ const ChatSummary = () => {
       }
 
       if (!response.body) {
+        setWaitingFirstToken(false);
         setMessages((prev) => {
           const next = [...prev];
           const idx = next.length - 1;
@@ -210,8 +317,10 @@ const ChatSummary = () => {
           }
 
           if (payload.type === "token" && payload.text) {
+            setWaitingFirstToken(false);
             appendAssistantToken(payload.text);
           } else if (payload.type === "error") {
+            setWaitingFirstToken(false);
             setMessages((prev) => {
               const next = [...prev];
               const idx = next.length - 1;
@@ -237,6 +346,7 @@ const ChatSummary = () => {
         return next;
       });
     } catch (error) {
+      setWaitingFirstToken(false);
       setMessages((prev) => {
         const next = [...prev];
         const idx = next.length - 1;
@@ -252,11 +362,17 @@ const ChatSummary = () => {
       });
     } finally {
       setLoadingChat(false);
+      setWaitingFirstToken(false);
     }
   };
 
   return (
     <div className="chat-summary-wrap">
+      {isGlobalDragging && (
+        <div className="global-drop-overlay" aria-hidden="true">
+          <div className="global-drop-content">파일을 여기에 놓으면 업로드됩니다.</div>
+        </div>
+      )}
       <aside className="chat-panel">
         <h2>대화형 요약</h2>
         <p>파일을 추출한 뒤 원하는 방식으로 질문하세요.</p>
@@ -265,9 +381,18 @@ const ChatSummary = () => {
           <input
             type="file"
             accept=".pdf,.doc,.docx,.hwpx,.jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,.gif"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
+            onChange={(e) => setFile(extractDropFile(e.target.files))}
           />
-          <span>{file ? file.name : "파일 선택"}</span>
+          {!file && <span>파일 선택 또는 화면 어디든 드래그앤드롭</span>}
+          {file && (
+            <div className="selected-file-card">
+              <div className="selected-file-icon" aria-hidden="true">📄</div>
+              <div className="selected-file-meta">
+                <div className="selected-file-name">{file.name}</div>
+                <div className="selected-file-size">{formatFileSize(file.size)}</div>
+              </div>
+            </div>
+          )}
         </label>
 
         <label className="field-label">OCR 모델</label>
@@ -324,8 +449,23 @@ const ChatSummary = () => {
           {messages.map((msg, idx) => (
             <div key={`${msg.role}-${idx}`} className={`bubble ${msg.role}`}>
               {msg.content}
+              {msg.meta?.type === "file" && (
+                <div className="message-file-card">
+                  <div className="message-file-icon" aria-hidden="true">📄</div>
+                  <div className="message-file-meta">
+                    <div className="message-file-name">{msg.meta.fileName}</div>
+                    <div className="message-file-size">{msg.meta.fileSize}</div>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
+
+          {loadingChat && waitingFirstToken && (
+            <div className="thinking-indicator" role="status" aria-live="polite">
+              <span className="thinking-dot" aria-hidden="true" />생각 중입니다
+            </div>
+          )}
         </div>
 
         <div className="chat-input-row">
