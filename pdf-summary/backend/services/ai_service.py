@@ -13,24 +13,46 @@ except Exception:
     chromadb = None
 
 # Ollama/VectorDB 기본 설정
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+_IS_DOCKER = os.path.exists("/.dockerenv")
+_DEFAULT_OLLAMA_BASE_URL = "http://ollama:11434" if _IS_DOCKER else "http://127.0.0.1:11434"
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", _DEFAULT_OLLAMA_BASE_URL)
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "gemma3:latest")
-LORA_MODEL_NAME = os.getenv("LORA_MODEL_NAME", "qwen2.5:3b-instruct-lora")
+LORA_MODEL_NAME = os.getenv("LORA_MODEL_NAME", "phi3:mini")
 RAG_ENABLED = os.getenv("RAG_ENABLED", "true").strip().lower() == "true"
 CHROMA_BASE_URL = os.getenv("CHROMA_BASE_URL", "http://chroma:8000")
 CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "documents")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
 RAG_TOP_K = int(os.getenv("RAG_TOP_K", "4"))
+CHAT_TEMPERATURE = float(os.getenv("CHAT_TEMPERATURE", "0.2"))
+CHAT_TOP_P = float(os.getenv("CHAT_TOP_P", "0.9"))
+CHAT_NUM_CTX = int(os.getenv("CHAT_NUM_CTX", "4096"))
+CHAT_NUM_PREDICT = int(os.getenv("CHAT_NUM_PREDICT", "1200"))
+CHAT_REPEAT_PENALTY = float(os.getenv("CHAT_REPEAT_PENALTY", "1.1"))
+# 문서 입력 최대 글자 수: (num_ctx - 프롬프트 오버헤드 ~1000토큰) * 1.5 chars/token, 최소 2000자
+_CHAT_INPUT_MAX_CHARS = max(2000, int((CHAT_NUM_CTX - 1000) * 1.5))
 
 SMALLTALK_PATTERNS = [
     r"^(안녕|안녕하세요|ㅎㅇ|hello|hi)\W*$",
     r"^(고마워|감사해|감사합니다|thanks|thank you)\W*$",
     r"^(이제\s*)?(물어보면|질문하면)\s*(되나|될까|돼|되나요)\W*$",
     r"^(대화|잡담)\s*(가능|돼|되나|할 수 있어)\W*$",
+    r"^(미친놈이야\??|왜\s*이래\??|답답해\W*)$",
 ]
 
 DOCUMENT_TASK_KEYWORDS = [
     "요약", "정리", "설명", "분석", "번역", "추출", "문서", "pdf", "핵심", "포인트", "비교", "근거", "찾아줘", "작성", "bullet",
+]
+
+DOCUMENT_FOCUS_KEYWORDS = [
+    "문서", "파일", "pdf", "doc", "docx", "hwpx", "요약", "정리", "추출", "원문", "본문", "비교", "차이", "핵심", "근거",
+]
+
+COMPARE_REQUEST_KEYWORDS = [
+    "비교", "차이", "다른점", "달라", "diff", "비교해", "차이점",
+]
+
+CODE_REQUEST_KEYWORDS = [
+    "코드", "구현", "수정", "리팩토링", "에러", "오류", "버그", "함수", "promise.all", "javascript", "js", "python", "sql",
 ]
 
 
@@ -66,6 +88,13 @@ def _is_smalltalk_instruction(instruction: str) -> bool:
     return (not has_doc_keyword) and has_casual_marker and len(normalized) <= 40
 
 
+def _is_document_focused_instruction(instruction: str) -> bool:
+    normalized = re.sub(r"\s+", " ", (instruction or "").strip().lower())
+    if not normalized:
+        return True
+    return any(keyword in normalized for keyword in DOCUMENT_FOCUS_KEYWORDS)
+
+
 def _smalltalk_response(instruction: str) -> str:
     normalized = re.sub(r"\s+", " ", (instruction or "").strip().lower())
 
@@ -77,7 +106,142 @@ def _smalltalk_response(instruction: str) -> str:
         return "네, 이제 물어보셔도 됩니다. 원하시는 내용만 말씀해 주세요."
     if any(token in normalized for token in ["대화", "잡담"]):
         return "네, 일상대화도 가능합니다. 편하게 말씀해 주세요."
+    if any(token in normalized for token in ["미친", "답답", "왜 이래"]):
+        return "불편하게 느끼셨다면 죄송합니다. 요청하신 내용만 바로 답변드릴게요."
     return "네, 요청하신 내용만 간단히 답변드릴게요."
+
+
+def _is_compare_request(instruction: str) -> bool:
+    normalized = re.sub(r"\s+", " ", (instruction or "").strip().lower())
+    if not normalized:
+        return False
+    return any(keyword in normalized for keyword in COMPARE_REQUEST_KEYWORDS)
+
+
+def _compare_request_response() -> str:
+    return (
+        "현재 대화형 요약은 추출된 문서 1개 기준으로 답변하고 있습니다. "
+        "두 파일 비교를 원하시면 두 문서의 텍스트를 함께 제공하거나, 비교할 두 파일을 모두 업로드해 주세요."
+    )
+
+
+def _is_code_request(instruction: str) -> bool:
+    normalized = re.sub(r"\s+", " ", (instruction or "").strip().lower())
+    if not normalized:
+        return False
+    return any(keyword in normalized for keyword in CODE_REQUEST_KEYWORDS)
+
+
+def _extract_document_names(text: str) -> List[str]:
+    matches = re.findall(r"^\[문서\s*\d+\s*:\s*(.+?)\]\s*$", text or "", flags=re.MULTILINE)
+    return [name.strip() for name in matches if name.strip()]
+
+
+def _build_chat_prompts(
+    *,
+    clean_instruction: str,
+    text: str,
+    rag_block: str,
+    is_document_focused: bool,
+) -> Tuple[str, str]:
+    if is_document_focused:
+        is_code_intent = _is_code_request(clean_instruction)
+        document_names = _extract_document_names(text)
+        document_count = len(document_names)
+        has_per_document_intent = any(
+            token in clean_instruction for token in ["각각", "문서별", "각 문서", "하나씩", "파일별", "두줄씩", "두 줄씩"]
+        )
+
+        if is_code_intent:
+            system_prompt = '''[ROLE]
+너는 문서 근거 기반 코드 도우미다.
+
+[TASK]
+사용자 요청이 코드 수정/구현이면 문서에서 관련 근거를 찾고, 필요한 코드만 정확히 제시하라.
+
+[STRICT RULES]
+- 문서에 없는 내용은 절대 단정하지 말 것
+- 추측 금지
+- 근거가 부족하면 "정보 없음"을 포함해 답할 것
+- 한국어는 반드시 자연스러운 존댓말로 작성할 것
+- 같은 문장을 반복하거나 어색한 번역투 문장을 만들지 말 것
+
+[FORMAT]
+- 변경 요점 bullet 2~4개
+- 필요 시 수정 코드 블록 1개
+- 마지막 줄: "요약: ..."'''
+
+            user_prompt = f'''[INPUT]
+문서:
+"""
+{text}
+{rag_block}
+"""
+
+요청:
+{clean_instruction}
+
+출력 시 문서의 서로 다른 언어 코드가 섞여 있더라도, 요청과 직접 관련된 코드만 정리해서 제시하세요.'''
+            return system_prompt, user_prompt
+
+        system_prompt = '''[ROLE]
+    너는 문서 기반 질문응답 시스템이다.
+
+    [TASK]
+    사용자 질문에 대해 반드시 문서 근거만 사용해 답하라.
+
+    [STRICT RULES]
+    - 모든 출력은 반드시 한국어로 작성할 것
+    - 한국어 문장은 자연스러운 존댓말로 작성할 것
+    - 문서 제목이나 목차를 그대로 베끼지 말고, 완결된 문장으로 요약할 것
+    - 같은 문장을 반복하거나 어색한 번역투 문장을 쓰지 말 것
+    - 문서에 없는 내용은 절대 생성하지 말 것
+    - 추측 금지
+    - 정보가 부족하면 반드시 "정보 없음"이라고 쓸 것
+    - 사용자가 요구한 형식이 있으면 그 형식을 최우선으로 따를 것
+    - 답변 중간에 끊긴 듯한 미완성 제목이나 단어만 남기지 말 것
+
+    [FORMAT RULES]
+    - 사용자가 "각각", "문서별", "각 문서", "두줄씩"처럼 문서별 정리를 요구하면 문서별로 분리해서 답할 것
+    - 문서별 응답 시 각 문서는 최대 2문장 또는 사용자가 요청한 줄 수만 사용할 것
+    - 마지막 문장은 항상 완결된 한국어 문장으로 끝낼 것'''
+
+        document_summary_hint = ""
+        if document_count > 1:
+            document_summary_hint = "\n문서 목록:\n" + "\n".join(
+            f"- 문서 {index + 1}: {name}" for index, name in enumerate(document_names)
+            )
+
+        per_document_hint = ""
+        if document_count > 1 and has_per_document_intent:
+            per_document_hint = (
+            "\n출력 형식 지침:\n"
+            "- 문서별로 '문서 n - 파일명' 형식의 짧은 소제목을 붙이세요.\n"
+            "- 각 문서마다 요청한 분량만큼만 핵심 내용을 쓰세요.\n"
+            "- 문서 원문의 소제목만 단독으로 복사하지 마세요."
+            )
+
+        user_prompt = f'''[INPUT]
+    문서:
+    """
+    {text}
+    {rag_block}
+    """{document_summary_hint}{per_document_hint}
+
+    질문:
+    {clean_instruction}'''
+        return system_prompt, user_prompt
+
+    system_prompt = """당신은 한국어로 대화하는 친절한 AI 어시스턴트입니다.
+
+[규칙]
+- 요청이 명확하면 즉시 답변하세요.
+- 사용자의 문장을 반복하거나 불필요하게 되묻지 마세요.
+- 요청하지 않은 장황한 설명은 생략하고 1~4문장으로 간결하게 답하세요.
+- 자연스러운 한국어 존댓말로 답변하세요.
+- 무조건 한국어로 답변하세요."""
+    user_prompt = clean_instruction
+    return system_prompt, user_prompt
 
 
 def _sanitize_collection_suffix(value: str) -> str:
@@ -333,7 +497,7 @@ async def summarize_with_instruction(
     use_lora: bool = False,
 ) -> str:
     """사용자 지시를 반영해 문서 텍스트를 요약/정리합니다."""
-    MAX_CHARS = 12000
+    MAX_CHARS = _CHAT_INPUT_MAX_CHARS
     if len(text) > MAX_CHARS:
         text = text[:MAX_CHARS] + "\n\n[... 이하 내용 생략 ...]"
 
@@ -344,13 +508,15 @@ async def summarize_with_instruction(
     if _is_smalltalk_instruction(clean_instruction):
         return _smalltalk_response(clean_instruction)
 
+    is_document_focused = _is_document_focused_instruction(clean_instruction)
+
     selected_model = LORA_MODEL_NAME if use_lora else model
     if not selected_model:
         selected_model = DEFAULT_MODEL
 
     rag_context = ""
     rag_count = 0
-    if use_rag:
+    if use_rag and is_document_focused:
         rag_context, rag_count = await build_rag_context(
             document_text=text,
             query=clean_instruction,
@@ -365,27 +531,12 @@ async def summarize_with_instruction(
 {rag_context}
 """
 
-    prompt = f"""당신은 문서 분석 AI 도우미입니다.
-반드시 아래 [사용자 요청]에만 정확히 답변하세요. 요청하지 않은 내용은 추가하지 마세요.
-
-[사용자 요청]
-{clean_instruction}
-
-{rag_block}
-
-[참고 문서 내용]
-{text}
-
-[답변 규칙]
-- 사용자 요청이 최우선입니다. 요청한 것만 답변하세요.
-- 요청이 확인/허용/짧은 일상대화라면 한두 문장으로만 답변하세요.
-- 요청하지 않은 배경 설명, 단계 나열, 추가 정리는 금지합니다.
-- 모델 자신에 관한 질문(예: "너는 뭐야?", "무슨 모델이야?" 등)은 문서와 무관하게 직접 답변하세요.
-- 요약을 명시적으로 요청했을 때만 문서를 요약하세요.
-- 특정 내용을 질문하면 해당 내용만 문서에서 찾아 답하세요.
-- 문서에서 확인할 수 없는 내용은 "문서에서 확인할 수 없습니다"라고 명시하세요.
-- RAG 문맥이 있으면 해당 근거를 우선 반영하세요.
-"""
+    system_prompt, user_prompt = _build_chat_prompts(
+        clean_instruction=clean_instruction,
+        text=text,
+        rag_block=rag_block,
+        is_document_focused=is_document_focused,
+    )
 
     try:
         async with httpx.AsyncClient(timeout=600.0) as client:
@@ -393,7 +544,15 @@ async def summarize_with_instruction(
                 f"{OLLAMA_BASE_URL}/api/generate",
                 json={
                     "model": selected_model,
-                    "prompt": prompt,
+                    "system": system_prompt,
+                    "prompt": user_prompt,
+                    "options": {
+                        "temperature": CHAT_TEMPERATURE,
+                        "top_p": CHAT_TOP_P,
+                        "num_ctx": CHAT_NUM_CTX,
+                        "num_predict": CHAT_NUM_PREDICT,
+                        "repeat_penalty": CHAT_REPEAT_PENALTY,
+                    },
                     "stream": False,
                 },
             )
@@ -428,7 +587,7 @@ async def summarize_with_instruction_stream(
     use_lora: bool = False,
 ) -> AsyncIterator[str]:
     """사용자 지시 기반 대화형 요약을 토큰 스트리밍으로 반환합니다."""
-    MAX_CHARS = 12000
+    MAX_CHARS = _CHAT_INPUT_MAX_CHARS
     if len(text) > MAX_CHARS:
         text = text[:MAX_CHARS] + "\n\n[... 이하 내용 생략 ...]"
 
@@ -440,13 +599,15 @@ async def summarize_with_instruction_stream(
         yield _smalltalk_response(clean_instruction)
         return
 
+    is_document_focused = _is_document_focused_instruction(clean_instruction)
+
     selected_model = LORA_MODEL_NAME if use_lora else model
     if not selected_model:
         selected_model = DEFAULT_MODEL
 
     rag_context = ""
     rag_count = 0
-    if use_rag:
+    if use_rag and is_document_focused:
         rag_context, rag_count = await build_rag_context(
             document_text=text,
             query=clean_instruction,
@@ -461,28 +622,12 @@ async def summarize_with_instruction_stream(
 {rag_context}
 """
 
-    prompt = f"""당신은 문서 분석 AI 도우미입니다.
-반드시 아래 [사용자 요청]에만 정확히 답변하세요. 요청하지 않은 내용은 추가하지 마세요. 무조건 한국어로 답변하세요.
-
-[사용자 요청]
-{clean_instruction}
-
-{rag_block}
-
-[참고 문서 내용]
-{text}
-
-[답변 규칙]
-- 사용자 요청이 최우선입니다. 요청한 것만 답변하세요.
-- 무조건 한국어로 답변하세요.
-- 요청이 확인/허용/짧은 일상대화라면 한두 문장으로만 답변하세요.
-- 요청하지 않은 배경 설명, 단계 나열, 추가 정리는 금지합니다.
-- 모델 자신에 관한 질문(예: "너는 뭐야?", "무슨 모델이야?" 등)은 문서와 무관하게 직접 답변하세요.
-- 요약을 명시적으로 요청했을 때만 문서를 요약하세요.
-- 특정 내용을 질문하면 해당 내용만 문서에서 찾아 답하세요.
-- 문서에서 확인할 수 없는 내용은 "문서에서 확인할 수 없습니다"라고 명시하세요.
-- RAG 문맥이 있으면 해당 근거를 우선 반영하세요.
-"""
+    system_prompt, user_prompt = _build_chat_prompts(
+        clean_instruction=clean_instruction,
+        text=text,
+        rag_block=rag_block,
+        is_document_focused=is_document_focused,
+    )
 
     try:
         async with httpx.AsyncClient(timeout=600.0) as client:
@@ -491,7 +636,15 @@ async def summarize_with_instruction_stream(
                 f"{OLLAMA_BASE_URL}/api/generate",
                 json={
                     "model": selected_model,
-                    "prompt": prompt,
+                    "system": system_prompt,
+                    "prompt": user_prompt,
+                    "options": {
+                        "temperature": CHAT_TEMPERATURE,
+                        "top_p": CHAT_TOP_P,
+                        "num_ctx": CHAT_NUM_CTX,
+                        "num_predict": CHAT_NUM_PREDICT,
+                        "repeat_penalty": CHAT_REPEAT_PENALTY,
+                    },
                     "stream": True,
                 },
             ) as response:

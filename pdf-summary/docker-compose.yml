@@ -19,6 +19,7 @@ services:
 
   backend:
     build: ./backend
+    image: pdf-summary-app:latest
     container_name: pdf_backend
     restart: unless-stopped
     depends_on:
@@ -32,6 +33,15 @@ services:
       DB_USER: root
       DB_PASSWORD: "9487"
       DB_NAME: pdf_summary
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      EXTRACT_DEFAULT_MODEL: gemma3:latest
+      CHAT_DEFAULT_MODEL: phi3:mini
+      CHAT_NUM_CTX: "4096"
+      CHAT_NUM_PREDICT: "900"
+      CHAT_REPEAT_PENALTY: "1.1"
+      DEFAULT_MODEL: gemma3:latest
+      LORA_MODEL_NAME: phi3:mini
       CHROMA_BASE_URL: http://chroma:8000
       CHROMA_COLLECTION: documents
       CELERY_BROKER_URL: redis://redis:6379/0
@@ -63,7 +73,7 @@ services:
       - chroma_data:/chroma/chroma
 
   worker_ocr:
-    build: ./backend
+    image: pdf-summary-app:latest
     container_name: pdf_worker_ocr
     restart: unless-stopped
     depends_on:
@@ -78,18 +88,27 @@ services:
       DB_USER: root
       DB_PASSWORD: "9487"
       DB_NAME: pdf_summary
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      EXTRACT_DEFAULT_MODEL: gemma3:latest
+      CHAT_DEFAULT_MODEL: phi3:mini
+      CHAT_NUM_CTX: "4096"
+      CHAT_NUM_PREDICT: "900"
+      CHAT_REPEAT_PENALTY: "1.1"
+      DEFAULT_MODEL: gemma3:latest
+      LORA_MODEL_NAME: phi3:mini
       CHROMA_BASE_URL: http://chroma:8000
       CHROMA_COLLECTION: documents
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       PYTHONPATH: /app
-      OCR_USE_GPU: "true"
-      PADDLE_DEVICE: gpu:0
+      OCR_USE_GPU: "false"
+      PADDLE_DEVICE: cpu
     volumes:
       - ./backend:/app
 
   worker_llm:
-    build: ./backend
+    image: pdf-summary-app:latest
     container_name: pdf_worker_llm
     restart: unless-stopped
     depends_on:
@@ -104,6 +123,15 @@ services:
       DB_USER: root
       DB_PASSWORD: "9487"
       DB_NAME: pdf_summary
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      EXTRACT_DEFAULT_MODEL: gemma3:latest
+      CHAT_DEFAULT_MODEL: phi3:mini
+      CHAT_NUM_CTX: "4096"
+      CHAT_NUM_PREDICT: "900"
+      CHAT_REPEAT_PENALTY: "1.1"
+      DEFAULT_MODEL: gemma3:latest
+      LORA_MODEL_NAME: phi3:mini
       CHROMA_BASE_URL: http://chroma:8000
       CHROMA_COLLECTION: documents
       CELERY_BROKER_URL: redis://redis:6379/0
@@ -113,7 +141,7 @@ services:
       - ./backend:/app
 
   flower:
-    build: ./backend
+    image: pdf-summary-app:latest
     container_name: pdf_flower
     restart: unless-stopped
     depends_on:
@@ -134,8 +162,22 @@ services:
       - ollama
     ports:
       - "11434:11434"
+    gpus: all
+    environment:
+      # GTX 1060 3GB VRAM 최적화
+      OLLAMA_GPU_OVERHEAD: "134217728"    # 128 MiB (bytes)
+      OLLAMA_KEEP_ALIVE: "30m"            # 모델 30분간 VRAM 유지 (기본 5m)
+      OLLAMA_MAX_LOADED_MODELS: "1"       # 동시 로드 모델 1개 제한
+      OLLAMA_NUM_PARALLEL: "1"            # 동시 요청 1개 (메모리 절감)
     volumes:
       - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   frontend:
     build: ./frontend

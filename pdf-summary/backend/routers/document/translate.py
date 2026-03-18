@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 import json
 import time
 
-from services.ai_service import translate_to_english
+from services.ai_service_extract import translate_to_english
 from database import get_db, PdfDocument, can_user_access_document, log_admin_activity
 
 translate_router = APIRouter(tags=["Translation"])

@@ -75,6 +75,22 @@ export const usePdfSummary = () => {
   const getAcceptByModel = (ocrModel) =>
     getAllowedExtensions(ocrModel).join(",");
 
+  const normalizeErrorMessage = (detail, fallback = "오류가 발생했습니다.") => {
+    if (!detail) return fallback;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) {
+      const first = detail[0];
+      if (typeof first === "string") return first;
+      if (first && typeof first === "object") {
+        return first.msg || first.message || JSON.stringify(first);
+      }
+    }
+    if (typeof detail === "object") {
+      return detail.message || detail.reason || detail.suggestion || JSON.stringify(detail);
+    }
+    return fallback;
+  };
+
   useEffect(() => {
     const userId = localStorage.getItem("userId");
     setIsAdmin(userId === "admin");
@@ -212,7 +228,7 @@ export const usePdfSummary = () => {
         let errorMsg = "추출 중 오류가 발생했습니다.";
         try {
           const data = await res.json();
-          errorMsg = data.detail || data.message || JSON.stringify(data) || errorMsg;
+          errorMsg = normalizeErrorMessage(data.detail || data.message || data, errorMsg);
         } catch (_) {}
         setStatus({ type: "error", msg: errorMsg });
         return;
@@ -265,7 +281,10 @@ export const usePdfSummary = () => {
             finalResult = event;
             setExtractionProgress({ mode: null, current: 0, total: 0 });
           } else if (event.type === "error") {
-            setStatus({ type: "error", msg: event.detail || "추출 중 오류가 발생했습니다." });
+            setStatus({
+              type: "error",
+              msg: normalizeErrorMessage(event.detail, "추출 중 오류가 발생했습니다."),
+            });
             setExtractionProgress({ mode: null, current: 0, total: 0 });
           }
         }
@@ -304,7 +323,7 @@ export const usePdfSummary = () => {
         let errorMsg = "요약 중 오류가 발생했습니다.";
         try {
           const data = await res.json();
-          errorMsg = data.detail || data.message || JSON.stringify(data) || errorMsg;
+          errorMsg = normalizeErrorMessage(data.detail || data.message || data, errorMsg);
         } catch (_) {}
         setStatus({ type: "error", msg: errorMsg });
         return;
@@ -345,7 +364,10 @@ export const usePdfSummary = () => {
           } else if (event.type === "done") {
             modelUsed = event.model_used || selectedModel;
           } else if (event.type === "error") {
-            setStatus({ type: "error", msg: event.detail || "요약 중 오류가 발생했습니다." });
+            setStatus({
+              type: "error",
+              msg: normalizeErrorMessage(event.detail, "요약 중 오류가 발생했습니다."),
+            });
             setStreamingSummary("");
           }
         }
@@ -390,7 +412,7 @@ export const usePdfSummary = () => {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.detail || "번역 중 오류가 발생했습니다.");
+        throw new Error(normalizeErrorMessage(data.detail || data.message || data, "번역 중 오류가 발생했습니다."));
       }
       setTranslations((prev) => ({
         ...prev,

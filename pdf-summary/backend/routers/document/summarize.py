@@ -1,5 +1,6 @@
 import asyncio
 import io
+import re
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -8,6 +9,7 @@ import time
 import datetime
 import base64
 import os
+import hashlib
 from pydantic import BaseModel
 from typing import Optional
 
@@ -15,25 +17,63 @@ from celery.result import AsyncResult
 import PyPDF2
 
 from services.pdf_service import extract_text_from_pdf
-from services.ai_service import (
+from services.ai_service_extract import (
     summarize_text,
     summarize_text_stream,
+    categorize_document,
+)
+from services.ai_service_chat import (
     summarize_with_instruction,
     summarize_with_instruction_stream,
-    categorize_document,
 )  # [변경] summarize_text_stream/summarize_with_instruction 스트리밍 포함
-from services.ocr.factory import extract_with_model_sync  # [추가] OCR 동기 실행용 (run_in_executor)
 from database import get_db, PdfDocument, can_user_access_document, log_admin_activity
 from celery_app import celery_app
 from tasks.document_tasks import extract_document_task, summarize_document_task
 
 summarize_router = APIRouter(tags=["Summarization & Extraction"])
+MAX_CHAT_DOCUMENTS = 5
+CHAT_DOCUMENT_PATTERN = r"^\[문서\s*\d+\s*:\s*.+?\]\s*$"
+
+
+def _stringify_detail(detail, fallback: str = "오류가 발생했습니다.") -> str:
+    if detail is None:
+        return fallback
+    if isinstance(detail, str):
+        return detail
+    if isinstance(detail, list) and detail:
+        first = detail[0]
+        if isinstance(first, str):
+            return first
+        if isinstance(first, dict):
+            return str(first.get("msg") or first.get("message") or first)
+    if isinstance(detail, dict):
+        return str(detail.get("message") or detail.get("reason") or detail.get("suggestion") or detail)
+    return str(detail)
+
+
+def _build_chat_scope(user_id: Optional[int], text: str) -> str:
+    digest = hashlib.sha1((text or "").encode("utf-8", errors="ignore")).hexdigest()[:12]
+    return f"user_{user_id}_{digest}" if user_id else f"shared_{digest}"
+
+
+def _count_chat_documents(document_text: str) -> int:
+    matches = re.findall(CHAT_DOCUMENT_PATTERN, document_text or "", flags=re.MULTILINE)
+    return len(matches)
+
+
+def _validate_chat_document_limit(document_text: str):
+    document_count = _count_chat_documents(document_text)
+    if document_count > MAX_CHAT_DOCUMENTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"대화형 요약은 문서 {MAX_CHAT_DOCUMENTS}개까지만 지원합니다.",
+        )
 
 
 class ChatSummarizeRequest(BaseModel):
     document_text: str
     instruction: str
-    model: str = "gemma3:latest"
+    model: str = "phi3:mini"
     user_id: Optional[int] = None
     use_rag: bool = True
     use_lora: bool = False
@@ -45,12 +85,13 @@ async def chat_summarize(request: ChatSummarizeRequest):
     text = (request.document_text or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="문서 텍스트가 비어있습니다.")
+    _validate_chat_document_limit(text)
 
     answer = await summarize_with_instruction(
         text=text,
         instruction=request.instruction,
         model=request.model,
-        user_scope=f"user_{request.user_id}" if request.user_id else "shared",
+        user_scope=_build_chat_scope(request.user_id, text),
         use_rag=request.use_rag,
         use_lora=request.use_lora,
     )
@@ -73,6 +114,7 @@ async def chat_summarize_stream(request: ChatSummarizeRequest):
     text = (request.document_text or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="문서 텍스트가 비어있습니다.")
+    _validate_chat_document_limit(text)
 
     model_used = request.model
     if request.use_lora:
@@ -88,7 +130,7 @@ async def chat_summarize_stream(request: ChatSummarizeRequest):
                 text=text,
                 instruction=request.instruction,
                 model=request.model,
-                user_scope=f"user_{request.user_id}" if request.user_id else "shared",
+                user_scope=_build_chat_scope(request.user_id, text),
                 use_rag=request.use_rag,
                 use_lora=request.use_lora,
             ):
@@ -382,38 +424,11 @@ async def extract_pdf(
                 }
             else:
                 yield _sse({"type": "start", "total_pages": 0, "ocr_mode": True})
-
-                loop = asyncio.get_running_loop()
-                queue = asyncio.Queue()
-
-                def on_page(current: int, total: int):
-                    asyncio.run_coroutine_threadsafe(
-                        queue.put({"type": "ocr_progress", "page": current, "total": total}),
-                        loop,
-                    )
-
-                future = loop.run_in_executor(
-                    None,
-                    lambda: extract_with_model_sync(contents, filename, model, on_page=on_page),
-                )
-
-                while not future.done():
-                    try:
-                        event = queue.get_nowait()
-                        yield _sse(event)
-                    except asyncio.QueueEmpty:
-                        await asyncio.sleep(0.08)
-
-                while not queue.empty():
-                    try:
-                        yield _sse(queue.get_nowait())
-                    except asyncio.QueueEmpty:
-                        break
-
                 try:
-                    extraction_result = future.result()
+                    await file.seek(0)
+                    extraction_result = await extract_text_from_pdf(file, ocr_model=model)
                 except Exception as exc:
-                    detail = getattr(exc, "detail", str(exc))
+                    detail = _stringify_detail(getattr(exc, "detail", str(exc)), "추출 중 오류가 발생했습니다.")
                     yield _sse({"type": "error", "detail": detail})
                     return
 
@@ -508,7 +523,7 @@ async def extract_pdf(
                 },
             })
         except Exception as exc:
-            detail = getattr(exc, "detail", str(exc))
+            detail = _stringify_detail(getattr(exc, "detail", str(exc)), "추출 중 오류가 발생했습니다.")
             yield _sse({"type": "error", "detail": detail})
 
     return StreamingResponse(
@@ -526,8 +541,15 @@ async def extract_pdf(
 async def extract_pdf_for_chat(
     file: UploadFile = File(...),
     ocr_model: str = Form(default="pypdf2"),
+    current_doc_count: int = Form(default=0),
 ):
     """(Chat only) Extracts text without saving any document to DB."""
+    if current_doc_count >= MAX_CHAT_DOCUMENTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"대화형 요약은 문서 {MAX_CHAT_DOCUMENTS}개까지만 지원합니다.",
+        )
+
     extraction_result = await extract_text_from_pdf(file, ocr_model=ocr_model)
     extracted_text = extraction_result["text"]
     extraction_time = extraction_result["processing_time"]

@@ -14,7 +14,7 @@ from database import (
     can_user_access_document,
     log_admin_activity,
 )
-from services.ai_service import summarize_text, categorize_document
+from services.ai_service_extract import summarize_text, categorize_document
 from services.pdf_service import extract_text_from_pdf, _build_upload_file_from_bytes
 
 
