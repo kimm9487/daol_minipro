@@ -1,0 +1,574 @@
+/* ===================================================
+   WebSocketChat.css  —  v3.0
+   첨부 컴포넌트 기준 / 파스텔 블루 + 화이트 / 쌉빡 효과
+   =================================================== */
+
+@import url("https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&display=swap");
+
+:root {
+  --c-blue: #3b82f6;
+  --c-blue-mid: #60a5fa;
+  --c-blue-pale: #bfdbfe;
+  --c-blue-ghost: #eff6ff;
+  --c-blue-bg: #f8fbff;
+  --c-white: #ffffff;
+  --c-text: #1e293b;
+  --c-text-sub: #64748b;
+  --c-text-muted: #94a3b8;
+  --c-border: #e2eeff;
+  --c-green: #22c55e;
+  --c-red: #ef4444;
+  --r-panel: 18px;
+  --r-bubble: 18px;
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── 1. FLOATING BUTTON ── */
+.floating-chat-btn {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  z-index: 9000;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  outline: none;
+  font-size: 26px;
+  background: linear-gradient(145deg, #93c5fd 0%, #3b82f6 50%, #2563eb 100%);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 0 0 0 rgba(59, 130, 246, 0.4),
+    0 4px 14px rgba(37, 99, 235, 0.4),
+    0 10px 30px rgba(37, 99, 235, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  transition:
+    transform 0.35s var(--ease-spring),
+    box-shadow 0.3s var(--ease-smooth);
+  animation: fab-pulse 2.8s ease-in-out infinite;
+}
+
+@keyframes fab-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(59, 130, 246, 0.35),
+      0 4px 14px rgba(37, 99, 235, 0.4),
+      0 10px 30px rgba(37, 99, 235, 0.22),
+      inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  }
+  50% {
+    box-shadow:
+      0 0 0 10px rgba(59, 130, 246, 0),
+      0 6px 22px rgba(37, 99, 235, 0.5),
+      0 14px 38px rgba(37, 99, 235, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  }
+}
+
+.floating-chat-btn:hover {
+  transform: scale(1.13) translateY(-4px) rotate(-6deg);
+  box-shadow:
+    0 0 0 0 rgba(59, 130, 246, 0),
+    0 8px 28px rgba(37, 99, 235, 0.55),
+    0 20px 52px rgba(37, 99, 235, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  animation: none;
+}
+
+.floating-chat-btn:active {
+  transform: scale(0.92) translateY(2px);
+  animation: none;
+}
+
+/* 300+ 뱃지 */
+.chat-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 30px;
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 12px;
+  border: 2.5px solid #fff;
+  background: var(--c-red);
+  color: #fff;
+  font-family: "Pretendard", sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.55);
+  animation:
+    badge-enter 0.55s var(--ease-spring) both,
+    badge-wiggle 5s 1.5s ease-in-out infinite;
+}
+
+@keyframes badge-enter {
+  from {
+    transform: scale(0) rotate(-20deg);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes badge-wiggle {
+  0%,
+  85%,
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+  87% {
+    transform: scale(1.15) rotate(-10deg);
+  }
+  90% {
+    transform: scale(1.15) rotate(10deg);
+  }
+  93% {
+    transform: scale(1.08) rotate(-5deg);
+  }
+  96% {
+    transform: scale(1.08) rotate(5deg);
+  }
+}
+
+/* ── 2. FLOATING CHAT PANEL ── */
+.floating-chat-panel {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  z-index: 8999;
+  width: 420px;
+  height: min(640px, calc(100vh - 48px));
+  border-radius: var(--r-panel);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-white);
+  border: 1px solid rgba(191, 219, 254, 0.5);
+  box-shadow:
+    0 0 0 1px rgba(59, 130, 246, 0.06),
+    0 4px 16px rgba(37, 99, 235, 0.1),
+    0 16px 40px rgba(37, 99, 235, 0.13),
+    0 40px 80px rgba(37, 99, 235, 0.09);
+  animation: panel-open 0.42s var(--ease-spring) forwards;
+  transform-origin: bottom right;
+}
+
+@keyframes panel-open {
+  from {
+    opacity: 0;
+    transform: scale(0.82) translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* ── 3. HEADER ── */
+.chat-header,
+.floating-chat-panel [class*="px-4"][class*="py-3"][class*="bg-blue"] {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px !important;
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%) !important;
+  color: #fff !important;
+  font-family: "Pretendard", sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 2px 12px rgba(37, 99, 235, 0.25);
+  position: relative;
+  overflow: hidden;
+}
+
+.chat-header::after,
+.floating-chat-panel [class*="px-4"][class*="py-3"][class*="bg-blue"]::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100%;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.18) 50%,
+    transparent 100%
+  );
+  animation: header-shimmer 3.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes header-shimmer {
+  0% {
+    left: -100%;
+  }
+  40%,
+  100% {
+    left: 150%;
+  }
+}
+
+/* ── 4. CHAT BODY ── */
+.chat-body {
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-blue-bg);
+}
+
+.chat-body > div {
+  background: var(--c-blue-bg) !important;
+  height: 100%;
+}
+
+/* ── 5. 메시지 스크롤 ── */
+.floating-chat-panel [class*="overflow-y-auto"]::-webkit-scrollbar {
+  width: 4px;
+}
+.floating-chat-panel [class*="overflow-y-auto"]::-webkit-scrollbar-track {
+  background: transparent;
+}
+.floating-chat-panel [class*="overflow-y-auto"]::-webkit-scrollbar-thumb {
+  background: rgba(147, 197, 253, 0.55);
+  border-radius: 4px;
+}
+
+/* ── 6. 날짜 구분선 ── */
+.floating-chat-panel [class*="px-5"][class*="bg-gray-200"],
+.floating-chat-panel [class*="px-5"][class*="rounded-full"][class*="text-sm"] {
+  background: rgba(255, 255, 255, 0.8) !important;
+  border: 1px solid rgba(191, 219, 254, 0.55) !important;
+  color: var(--c-text-sub) !important;
+  font-family: "Pretendard", sans-serif;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  backdrop-filter: blur(6px);
+  padding: 4px 14px !important;
+  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.08);
+}
+
+/* ── 7. 메시지 등장 애니메이션 ── */
+.floating-chat-panel [class*="flex"][class*="items-end"][class*="gap-2"] {
+  font-family: "Pretendard", sans-serif;
+  animation: msg-appear 0.28s var(--ease-spring) both;
+}
+
+@keyframes msg-appear {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 아바타 - 상대방 */
+.floating-chat-panel
+  [class*="w-9"][class*="h-9"][class*="rounded-full"][class*="bg-gray"] {
+  background: linear-gradient(135deg, #bfdbfe, #93c5fd) !important;
+  color: #1e3a5f !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.18);
+}
+
+/* 아바타 - 나 */
+.floating-chat-panel
+  [class*="w-9"][class*="h-9"][class*="rounded-full"][class*="bg-blue"] {
+  background: linear-gradient(135deg, #60a5fa, #3b82f6) !important;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+/* ── 내 말풍선 (노란→파란) ── */
+.floating-chat-panel [class*="rounded-2xl"][class*="rounded-br-none"] {
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%) !important;
+  color: #fff !important;
+  border-bottom-right-radius: 5px !important;
+  box-shadow:
+    0 4px 14px rgba(59, 130, 246, 0.35),
+    0 1px 3px rgba(37, 99, 235, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+  transition: transform 0.15s var(--ease-smooth) !important;
+}
+
+.floating-chat-panel [class*="rounded-2xl"][class*="rounded-br-none"]:hover {
+  transform: scale(1.015) !important;
+}
+
+/* ── 상대방 말풍선 ── */
+.floating-chat-panel [class*="rounded-2xl"][class*="rounded-bl-none"] {
+  background: #ffffff !important;
+  color: var(--c-text) !important;
+  border-bottom-left-radius: 5px !important;
+  border: 1px solid rgba(219, 234, 254, 0.8) !important;
+  box-shadow:
+    0 2px 8px rgba(59, 130, 246, 0.08),
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+  transition: transform 0.15s var(--ease-smooth) !important;
+}
+
+.floating-chat-panel [class*="rounded-2xl"][class*="rounded-bl-none"]:hover {
+  transform: scale(1.015) !important;
+}
+
+/* ── 8. 입력창 ── */
+.floating-chat-panel [class*="p-4"][class*="border-t"] {
+  background: #fff !important;
+  border-top: 1px solid var(--c-border) !important;
+  padding: 12px 14px !important;
+  flex-shrink: 0;
+}
+
+.floating-chat-panel input[type="text"],
+.floating-chat-panel input:not([type="submit"]):not([type="button"]) {
+  font-family: "Pretendard", sans-serif !important;
+  font-size: 13.5px !important;
+  color: var(--c-text) !important;
+  background: #f8fbff !important;
+  border: 1.5px solid rgba(191, 219, 254, 0.6) !important;
+  border-radius: 24px !important;
+  padding: 11px 18px !important;
+  outline: none !important;
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.04),
+    0 1px 2px rgba(255, 255, 255, 0.8) !important;
+  transition:
+    border-color 0.2s var(--ease-smooth),
+    box-shadow 0.2s var(--ease-smooth),
+    background 0.2s var(--ease-smooth) !important;
+}
+
+.floating-chat-panel input::placeholder {
+  color: var(--c-text-muted) !important;
+}
+
+.floating-chat-panel input:focus {
+  background: #fff !important;
+  border-color: rgba(96, 165, 250, 0.7) !important;
+  box-shadow:
+    0 0 0 3px rgba(147, 197, 253, 0.25),
+    0 2px 8px rgba(59, 130, 246, 0.08) !important;
+}
+
+/* 전송 버튼 */
+.floating-chat-panel button[class*="px-7"],
+.floating-chat-panel button[class*="bg-blue-600"][class*="rounded-full"] {
+  font-family: "Pretendard", sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  padding: 11px 20px !important;
+  border-radius: 24px !important;
+  border: none !important;
+  background: linear-gradient(135deg, #60a5fa, #3b82f6) !important;
+  color: #fff !important;
+  box-shadow:
+    0 3px 10px rgba(59, 130, 246, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+  transition:
+    transform 0.22s var(--ease-spring),
+    box-shadow 0.22s var(--ease-smooth),
+    background 0.18s var(--ease-smooth) !important;
+  cursor: pointer !important;
+  outline: none !important;
+  flex-shrink: 0;
+}
+
+.floating-chat-panel button[class*="px-7"]:hover {
+  background: linear-gradient(135deg, #93c5fd, #60a5fa) !important;
+  transform: scale(1.06) translateY(-1px) !important;
+  box-shadow:
+    0 6px 20px rgba(59, 130, 246, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+}
+
+.floating-chat-panel button[class*="px-7"]:active {
+  transform: scale(0.94) !important;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3) !important;
+}
+
+.floating-chat-panel button[class*="px-7"]:disabled {
+  background: linear-gradient(135deg, #bfdbfe, #93c5fd) !important;
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* ── 9. 타이핑 인디케이터 ── */
+.typing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 14px;
+  background: #fff;
+  border: 1px solid rgba(219, 234, 254, 0.8);
+  border-radius: 18px;
+  border-bottom-left-radius: 5px;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.08);
+  margin: 4px 0 4px 40px;
+}
+
+.typing-indicator span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #93c5fd;
+  animation: typing-dot 1.35s ease-in-out infinite;
+}
+
+.typing-indicator span:nth-child(1) {
+  animation-delay: 0s;
+}
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes typing-dot {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  30% {
+    transform: translateY(-5px);
+    opacity: 1;
+  }
+}
+
+/* ── 10. 모바일 ── */
+@media (max-width: 480px) {
+  .floating-chat-panel {
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: min(88vh, 100%) !important;
+    border-radius: 20px 20px 0 0 !important;
+  }
+  .floating-chat-btn {
+    bottom: 20px !important;
+    right: 20px !important;
+  }
+}
+
+/* ── Floating Chat Panel ─ 카카오톡 스타일 ── */
+.floating-chat-panel {
+  position: fixed;
+  bottom: 100px; /* 버튼 위쪽부터 시작 */
+  right: 32px;
+  width: 380px;
+  height: 520px;
+  background: white;
+  border-radius: 18px;
+  box-shadow:
+    0 10px 40px rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  z-index: 9999;
+  transform: translateY(20px) scale(0.95);
+  opacity: 0;
+  transition: all 0.28s cubic-bezier(0.34, 1.56, 0.64, 1); /* spring 느낌 */
+  pointer-events: none;
+}
+
+.floating-chat-panel.active {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 모바일에서는 전체 화면처럼 */
+@media (max-width: 480px) {
+  .floating-chat-panel {
+    bottom: 0;
+    right: 0;
+    width: 100%;
+    height: 85vh;
+    border-radius: 18px 18px 0 0;
+    transform: translateY(100%);
+  }
+
+  .floating-chat-panel.active {
+    transform: translateY(0);
+  }
+}
+
+/* 헤더 */
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  background: #3b82f6; /* 또는 var(--c-blue) */
+  color: white;
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.chat-close-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.4rem;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 50%;
+  line-height: 1;
+}
+
+.chat-close-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* body (WebSocketChatWindow가 들어가는 곳) */
+.chat-body {
+  height: calc(100% - 52px); /* 헤더 높이만큼 빼기 */
+  overflow: hidden;
+  background: #f8fbff; /* 밝은 배경으로 깔끔하게 */
+}
+
+/* 플로팅 버튼 (기존 유지하면서 약간 조정) */
+.floating-chat-btn {
+  /* ... 기존 스타일 ... */
+  z-index: 10000; /* 패널보다 위에 */
+}
+
+.floating-chat-btn {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  z-index: 10000;          /* ← 이 값 중요! 9999 이상으로 */
+  /* 나머지 스타일 그대로 */
+}
+
+.floating-chat-panel {
+  z-index: 9999;           /* 버튼보다 살짝 아래 */
+}

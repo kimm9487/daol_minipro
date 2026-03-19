@@ -1,0 +1,25 @@
+version: '3.9'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev          # ← 당신이 만든 파일 이름과 맞춰주세요
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules                 # node_modules 충돌 방지
+    environment:
+      - VITE_BACKEND_TARGET=http://backend:8000   # ← vite proxy가 이걸로 backend 찾음
+    command: npm run dev -- --host 0.0.0.0
+    depends_on:
+      - backend
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
