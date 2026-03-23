@@ -25,7 +25,7 @@ from services.ai_service_extract import (
 from services.ai_service_chat import (
     summarize_with_instruction,
     summarize_with_instruction_stream,
-)  # [변경] summarize_text_stream/summarize_with_instruction 스트리밍 포함
+)
 from database import get_db, PdfDocument, can_user_access_document, log_admin_activity
 from celery_app import celery_app
 from tasks.document_tasks import extract_document_task, summarize_document_task
@@ -254,13 +254,18 @@ async def _build_extraction_document(
     is_public: bool,
     db: Session,
 ):
-    extraction_result = await extract_text_from_pdf(file, ocr_model=ocr_model)
+    # ✅ 한 번만 읽고 bytes로 처리
+    file_bytes = await file.read()
+    filename = file.filename or "uploaded_file"
+
+    extraction_result = await extract_text_from_pdf(
+        file_bytes=file_bytes,
+        filename=filename,
+        ocr_model=ocr_model,
+    )
     extracted_text = extraction_result["text"]
     extraction_time = extraction_result["processing_time"]
-
-    await file.seek(0)
-    file_size = len(await file.read())
-    await file.seek(0)
+    file_size = len(file_bytes)
 
     stored_password = None
     if is_important:
@@ -270,12 +275,10 @@ async def _build_extraction_document(
                 detail="중요문서는 4자리 숫자 비밀번호가 필요합니다."
             )
         stored_password = password
-    else:
-        stored_password = None
 
     doc = PdfDocument(
         user_id=user_id,
-        filename=file.filename,
+        filename=filename,
         extracted_text=extracted_text,
         summary=None,
         ocr_model=extraction_result.get("ocr_model"),
@@ -293,12 +296,11 @@ async def _build_extraction_document(
     db.add(doc)
     db.commit()
     db.refresh(doc)
-    
+
     try:
         category_start = time.time()
-        category = await categorize_document(title=file.filename)
+        category = await categorize_document(title=filename)
         category_time = time.time() - category_start
-        
         doc.category = category
         db.commit()
         print(f"✅ 문서 카테고리 분류 완료: {category} ({category_time:.2f}초)")
@@ -306,7 +308,7 @@ async def _build_extraction_document(
         print(f"⚠️ 카테고리 분류 실패: {str(e)}")
         doc.category = "기타"
         db.commit()
-    
+
     log_admin_activity(
         db=db,
         admin_user_id=user_id,
@@ -314,19 +316,19 @@ async def _build_extraction_document(
         target_type="DOCUMENT",
         target_id=doc.id,
         details=json.dumps({
-            "filename": file.filename,
+            "filename": filename,
             "file_size_bytes": file_size,
             "ocr_model": extraction_result["ocr_model"],
             "category": doc.category,
             "is_important": is_important,
-            "is_public": is_public
+            "is_public": is_public,
         }),
-        ip_address=request.client.host
+        ip_address=request.client.host if request.client else "unknown",
     )
 
     return {
         "id": doc.id,
-        "filename": file.filename,
+        "filename": filename,
         "original_length": len(extracted_text),
         "extracted_text": extracted_text,
         "summary": None,
@@ -340,14 +342,14 @@ async def _build_extraction_document(
         "timing": {
             "extraction_time": f"{extraction_time:.2f}초",
             "summary_time": None,
-            "total_time": f"{extraction_time:.2f}초"
+            "total_time": f"{extraction_time:.2f}초",
         },
         "extraction_info": {
             "total_pages": extraction_result["total_pages"],
             "successful_pages": extraction_result["successful_pages"],
             "char_count": extraction_result["char_count"],
-            "file_size_mb": f"{file_size / (1024*1024):.2f}MB"
-        }
+            "file_size_mb": f"{file_size / (1024 * 1024):.2f}MB",
+        },
     }
 
 
@@ -425,8 +427,12 @@ async def extract_pdf(
             else:
                 yield _sse({"type": "start", "total_pages": 0, "ocr_mode": True})
                 try:
-                    await file.seek(0)
-                    extraction_result = await extract_text_from_pdf(file, ocr_model=model)
+                    # ✅ file 대신 이미 읽은 contents(bytes)로 직접 호출
+                    extraction_result = await extract_text_from_pdf(
+                        file_bytes=contents,
+                        filename=filename,
+                        ocr_model=model,
+                    )
                 except Exception as exc:
                     detail = _stringify_detail(getattr(exc, "detail", str(exc)), "추출 중 오류가 발생했습니다.")
                     yield _sse({"type": "error", "detail": detail})
@@ -550,12 +556,20 @@ async def extract_pdf_for_chat(
             detail=f"대화형 요약은 문서 {MAX_CHAT_DOCUMENTS}개까지만 지원합니다.",
         )
 
-    extraction_result = await extract_text_from_pdf(file, ocr_model=ocr_model)
+    # ✅ 한 번만 읽고 bytes로 처리
+    file_bytes = await file.read()
+    filename = file.filename or "uploaded_file"
+
+    extraction_result = await extract_text_from_pdf(
+        file_bytes=file_bytes,
+        filename=filename,
+        ocr_model=ocr_model,
+    )
     extracted_text = extraction_result["text"]
     extraction_time = extraction_result["processing_time"]
 
     return {
-        "filename": file.filename,
+        "filename": filename,
         "extracted_text": extracted_text,
         "ocr_model": extraction_result.get("ocr_model"),
         "timing": {
@@ -613,7 +627,6 @@ async def summarize_extracted_document(
         doc.summary_time_seconds = round(summary_time, 3)
         doc.updated_at = datetime.datetime.now()
         db.commit()
-        db.refresh(doc)
 
         log_admin_activity(
             db=db,

@@ -69,7 +69,7 @@ const ChromaStatus = () => {
                                     chromaStatus.collections.map((col) => (
                                         <tr key={col.name}>
                                             <td>{col.name}</td>
-                                            <td>{col.count >= 0 ? col.count : '조회 실패'}</td>
+                                            <td>{col.count !== undefined && col.count !== null ? String(col.count) : '조회 실패'}</td>
                                         </tr>
                                     ))
                                 ) : (

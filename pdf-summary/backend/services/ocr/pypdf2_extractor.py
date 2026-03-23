@@ -2,14 +2,13 @@ import io
 import time
 
 import PyPDF2
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException
 
 from .types import OcrResult
 
 
-async def extract_text(file: UploadFile) -> OcrResult:
+async def extract_text(contents: bytes, filename: str) -> OcrResult:
     start_time = time.time()
-    contents = await file.read()
 
     if len(contents) == 0:
         raise HTTPException(status_code=422, detail="파일이 비어있습니다.")

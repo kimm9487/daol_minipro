@@ -3,7 +3,7 @@ import time
 from typing import Callable, Optional
 
 import numpy as np
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException
 
 from .easyocr_extractor import _build_reader as build_easyocr_reader
 from .easyocr_extractor import extract_text as extract_easyocr
@@ -32,17 +32,17 @@ def list_available_ocr_models() -> list:
     ]
 
 
-async def extract_with_model(file: UploadFile, ocr_model: str) -> OcrResult:
+async def extract_with_model(file_bytes: bytes, filename: str, ocr_model: str) -> OcrResult:
     model = (ocr_model or "pypdf2").lower()
 
     if model == "pypdf2":
-        return await extract_pypdf2(file)
+        return await extract_pypdf2(file_bytes, filename)
     if model == "tesseract":
-        return await extract_tesseract(file)
+        return await extract_tesseract(file_bytes, filename)
     if model == "easyocr":
-        return await extract_easyocr(file)
+        return await extract_easyocr(file_bytes, filename)
     if model == "paddleocr":
-        return await extract_paddleocr(file)
+        return await extract_paddleocr(file_bytes, filename)
 
     raise HTTPException(
         status_code=400,

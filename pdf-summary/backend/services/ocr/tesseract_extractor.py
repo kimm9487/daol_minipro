@@ -1,7 +1,7 @@
 import time
 import os
 
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException
 
 from .image_preprocess import preprocess_for_ocr
 from .pdf_page_renderer import render_input_to_images
@@ -21,20 +21,18 @@ def _extract_from_page(image, lang: str) -> str:
     return pytesseract.image_to_string(image, lang=lang, config="--oem 3 --psm 6")
 
 
-async def extract_text(file: UploadFile, lang: str = "kor+eng") -> OcrResult:
+async def extract_text(contents: bytes, filename: str, lang: str = "kor+eng") -> OcrResult:
     start_time = time.time()
-    contents = await file.read()
-
     if len(contents) == 0:
         raise HTTPException(status_code=422, detail="파일이 비어있습니다.")
 
-    filename = file.filename or "uploaded_file"
     extension = os.path.splitext(filename)[1].lower()
     images = render_input_to_images(contents, extension)
 
     parts = []
     successful_pages = 0
     first_error = None
+
     for idx, image in enumerate(images, start=1):
         try:
             candidates = []

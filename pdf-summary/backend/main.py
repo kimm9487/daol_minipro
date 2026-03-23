@@ -15,6 +15,7 @@ from utils.discord import send_discord_alert
 from routers.auth.router import router as auth_router
 from routers.admin.router import router as admin_router
 from routers.document.router import router as document_router
+from routers.websocket.websocket import websocket_app
 
 # FastAPI 앱 초기화
 app = FastAPI(title="PDF Summary System API", version="1.0.0")
@@ -83,6 +84,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(document_router)
+app.mount("/socket.io", websocket_app)
 
 
 
