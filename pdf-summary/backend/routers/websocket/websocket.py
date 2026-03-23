@@ -47,7 +47,7 @@ else:
 sio = socketio.AsyncServer(
     client_manager=manager,
     async_mode='asgi',
-    cors_allowed_origins=[],
+    cors_allowed_origins="*",
     logger=True,
     engineio_logger=True,
     ping_timeout=30,

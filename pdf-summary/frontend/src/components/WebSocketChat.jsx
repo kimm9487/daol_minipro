@@ -34,9 +34,15 @@ export default function WebSocketChat() {
       return;
     }
 
-    const newSocket = io("/", {
+    const SOCKET_URL =
+      import.meta.env.VITE_BACKEND_TARGET ||
+      (import.meta.env.DEV ? "http://localhost:8000" : "http://backend:8000");
+
+    console.log("[Socket] 연결 시도 URL →", SOCKET_URL);
+
+    const newSocket = io(SOCKET_URL, {
       path: "/socket.io/",
-      transports: ["websocket", "polling"], // websocket을 먼저 시도하도록 순서 변경
+      transports: ["websocket", "polling"],
       upgrade: true,
       forceNew: false,
       reconnection: true,
@@ -45,7 +51,7 @@ export default function WebSocketChat() {
       reconnectionDelayMax: 15000,
       timeout: 45000,
       auth: { session_token: sessionToken },
-      withCredentials: true, // 쿠키/인증 헤더 전달 보장
+      withCredentials: true,
     });
 
     newSocket.on("connect", () => {
@@ -74,30 +80,25 @@ export default function WebSocketChat() {
     });
 
     // 실시간 메시지 수신
-    newSocket.on("receiveMessage", (msg) => {
-      console.log("🔥 메시지 받음:", msg);
+    newSocket.on("receiveMessage", (payload) => {
+      console.log("RAW:", payload);
 
-      // 🔥 여기 추가 (핵심)
+      const msg = payload?.content ? payload : payload?.[0] || payload;
+
+      // ★★★ 디버깅 로그 2 ★★★
+      console.log("[FRONT DEBUG] 파싱된 msg:", msg);
+
       const safeMsg = {
-        ...msg,
-        timestamp: msg.timestamp || new Date().toISOString(),
+        senderId: msg.senderId || msg.sender || msg.userId,
+        content: msg.content || msg.message || msg.text,
+        timestamp: msg.timestamp || msg.createdAt || new Date().toISOString(),
+        isSystem: msg.isSystem || false,
       };
 
-      setMessages((prev) => {
-        const updated = [...prev, safeMsg].slice(-1000);
-        const key = getStorageKey();
+      // ★★★ 디버깅 로그 3 ★★★
+      console.log("[FRONT DEBUG] 최종 safeMsg:", safeMsg);
 
-        if (key) localStorage.setItem(key, JSON.stringify(updated));
-        return updated;
-      });
-
-      // 내가 보낸 메시지가 아니고, 시스템 메시지도 아니면 unread 증가
-      if (msg.senderId !== userId && !msg.isSystem) {
-        // 채팅창이 열려있지 않을 때만 카운트 증가 (중요!)
-        if (!showChat) {
-          setUnreadCount((prev) => prev + 1);
-        }
-      }
+      setMessages((prev) => [...prev, safeMsg]);
     });
 
     // 온라인 유저 목록 실시간 업데이트

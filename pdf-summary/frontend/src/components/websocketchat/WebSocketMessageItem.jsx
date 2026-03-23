@@ -22,8 +22,11 @@ export default function MessageBubble({ message }) {
     );
   }
 
-  const currentUserId = localStorage.getItem("userId");
-  const isMe = senderId === currentUserId;
+  const currentUserId =
+    localStorage.getItem("userId") || localStorage.getItem("username");
+  const isMe =
+    String(senderId) === String(currentUserId) ||
+    String(senderId) === String(localStorage.getItem("username"));
   const timeStr = timestamp ? format(new Date(timestamp), "HH:mm:ss") : "";
 
   return (

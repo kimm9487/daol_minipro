@@ -5,11 +5,15 @@ import DateDivider from "./WebSocketDateSeparator";
 
 export default function MessageList({ messages, bottomRef }) {
   const groupedItems = useMemo(() => {
+    console.log("📦 MessageList messages:", messages);
     const items = [];
     let prevDateKey = null;
 
     messages.forEach((msg, index) => {
-      const msgDate = new Date(msg.timestamp);
+      const msgDate =
+        msg.timestamp && !isNaN(new Date(msg.timestamp))
+          ? new Date(msg.timestamp)
+          : new Date();
       const dateKey = msgDate.toDateString();
 
       // 날짜 구분선
@@ -43,7 +47,7 @@ export default function MessageList({ messages, bottomRef }) {
         }
         return (
           <MessageBubble
-            key={`msg-${idx}`}
+            key={`${item.senderId}-${item.timestamp}-${idx}`} // ← 이렇게 조합하면 충돌 거의 없음
             message={item}
             showSenderInfo={item.showSenderInfo}
             isContinuous={item.isContinuous}
