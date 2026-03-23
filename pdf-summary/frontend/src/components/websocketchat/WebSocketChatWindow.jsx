@@ -51,6 +51,7 @@ export default function WebSocketChatWindow({
   onlineUsers = [],
   connectionError = null,
   onUnreadCountChange,
+  isOpen = false,
 }) {
   const bottomRef = useRef(null);
 
@@ -61,6 +62,7 @@ export default function WebSocketChatWindow({
 
   const userId = localStorage.getItem("userId");
 
+  // WebSocketChatWindow.jsx 안 useMemo 부분 수정
   const unreadCount = useMemo(() => {
     if (!lastViewedAt) return messages.length;
     return messages.filter((m) => {
@@ -77,15 +79,17 @@ export default function WebSocketChatWindow({
   }, [unreadCount, onUnreadCountChange]);
 
   useEffect(() => {
+    if (typeof onUnreadCountChange === "function") {
+      onUnreadCountChange(unreadCount);
+    }
+  }, [unreadCount, onUnreadCountChange]);
+
+  useEffect(() => {
     if (messages.length > 0) {
       const now = Date.now();
       localStorage.setItem("chat_last_viewed", now.toString());
       setLastViewedAt(now);
     }
-  }, [messages]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const handleSendMessage = (text) => {

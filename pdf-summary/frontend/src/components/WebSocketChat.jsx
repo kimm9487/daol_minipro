@@ -200,6 +200,7 @@ export default function WebSocketChat() {
               onlineUsers={onlineUsers}
               connectionError={connectionError}
               onUnreadCountChange={setUnreadCount}
+              isOpen={showChat}
             />
           </div>
         </div>
