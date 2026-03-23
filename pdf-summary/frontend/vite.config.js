@@ -29,6 +29,7 @@ export default defineConfig(({ mode }) => {
               ws: true,
               changeOrigin: true,
               secure: false,
+              rewrite: (path) => path,
               agent: new http.Agent({
                 keepAlive: true,
                 keepAliveMsecs: 1000, // 1초마다 keep-alive 패킷 보내기
@@ -46,6 +47,12 @@ export default defineConfig(({ mode }) => {
                 });
               },
               // ======================================================
+            },
+            // 추가: 일반 API도 proxy (Socket.IO polling이 /api를 건드릴 때 대비)
+            "/api": {
+              target: backendTarget,
+              changeOrigin: true,
+              secure: false,
             },
 
             // 필요하면 일반 API도 동일하게 (나중에 확장 용이)
