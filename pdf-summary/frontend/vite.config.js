@@ -24,7 +24,7 @@ export default defineConfig(({ mode }) => {
           port: 5173,
           proxy: {
             // Socket.IO 전용 프록시 (가장 중요한 부분)
-            "/socket.io": {
+            "/socket.io/": {
               target: backendTarget,
               ws: true,
               changeOrigin: true,
