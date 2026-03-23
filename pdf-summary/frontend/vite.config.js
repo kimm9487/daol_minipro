@@ -29,7 +29,12 @@ export default defineConfig(({ mode }) => {
               ws: true,
               changeOrigin: true,
               secure: false,
-              agent: new http.Agent({ keepAlive: true }),
+              agent: new http.Agent({
+                keepAlive: true,
+                keepAliveMsecs: 1000, // 1초마다 keep-alive 패킷 보내기
+                timeout: 60000, // 연결 타임아웃 60초
+                freeSocketTimeout: 30000, // 유휴 소켓 30초 후 정리 (ECONNRESET 방지)
+              }),
 
               // ↓↓↓ 여기부터 아래처럼 교체 (전체 configure 블록 통째로 바꿈)
               configure: (proxy) => {
