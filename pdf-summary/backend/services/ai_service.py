@@ -31,6 +31,7 @@ CHAT_NUM_CTX = int(os.getenv("CHAT_NUM_CTX", "4096"))
 CHAT_NUM_PREDICT = int(os.getenv("CHAT_NUM_PREDICT", "800"))
 CHAT_REPEAT_PENALTY = float(os.getenv("CHAT_REPEAT_PENALTY", "1.1"))
 SUMMARY_MAX_CONCURRENCY = max(1, int(os.getenv("SUMMARY_MAX_CONCURRENCY", "3")))
+RAG_EMBED_MAX_CONCURRENCY = max(1, int(os.getenv("RAG_EMBED_MAX_CONCURRENCY", "4")))
 # 문서 입력 최대 글자 수: (num_ctx - 프롬프트 오버헤드 ~1000토큰) * 1.5 chars/token, 최소 2000자
 _CHAT_INPUT_MAX_CHARS = max(2000, int((CHAT_NUM_CTX - 1000) * 1.5))
 
@@ -431,8 +432,17 @@ async def build_rag_context(document_text: str, query: str, user_scope: str, top
     embeddings = []
     metadatas = []
 
-    for idx, chunk in enumerate(chunks):
-        emb = await _get_ollama_embedding(chunk)
+    semaphore = asyncio.Semaphore(RAG_EMBED_MAX_CONCURRENCY)
+
+    async def _embed_chunk(idx: int, chunk: str):
+        async with semaphore:
+            emb = await _get_ollama_embedding(chunk)
+            return idx, chunk, emb
+
+    embed_tasks = [_embed_chunk(idx, chunk) for idx, chunk in enumerate(chunks)]
+    embed_results = await asyncio.gather(*embed_tasks)
+
+    for idx, chunk, emb in sorted(embed_results, key=lambda item: item[0]):
         if emb is None:
             continue
         ids.append(f"{fingerprint}-{idx}")

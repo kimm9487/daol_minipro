@@ -125,6 +125,8 @@ async def chat_summarize_stream(request: ChatSummarizeRequest):
 
     async def generate():
         collected = []
+        # 첫 토큰 전까지 대기 시간이 길어질 수 있어, 초기 keep-alive 이벤트를 먼저 전송합니다.
+        yield _sse({"type": "start"})
         try:
             async for token in summarize_with_instruction_stream(
                 text=text,
