@@ -9,7 +9,6 @@ from .easyocr_extractor import _build_reader as build_easyocr_reader
 from .easyocr_extractor import extract_text as extract_easyocr
 
 
-from .glmocr_extractor import extract_text as extract_glmocr
 from .image_preprocess import preprocess_for_ocr
 from .markdown_layout import to_layout_markdown
 from .paddleocr_extractor import _build_reader as build_paddleocr_reader
@@ -26,7 +25,6 @@ SUPPORTED_OCR_MODELS = {
     "tesseract": "Tesseract OCR (PDF + doc/docx/hwp)",
     "easyocr": "EasyOCR (PDF + doc/docx/hwp)",
     "paddleocr": "PaddleOCR (PDF + doc/docx/hwp)",
-    "glmocr": "GLM-OCR (PDF + 이미지, 고정밀 멀티모달)",
 }
 
 
@@ -48,8 +46,6 @@ async def extract_with_model(file_bytes: bytes, filename: str, ocr_model: str) -
         return await extract_easyocr(file_bytes, filename)
     if model == "paddleocr":
         return await extract_paddleocr(file_bytes, filename)
-    if model == "glmocr":
-        return await extract_glmocr(file_bytes, filename)
 
     raise HTTPException(
         status_code=400,
@@ -202,15 +198,6 @@ def extract_with_model_sync(
             "char_count": len(merged),
             "ocr_model": "tesseract",
         }
-
-    if model == "glmocr":
-        # glmocr SDK는 내부적으로 API 서버(Ollama/vLLM)를 호출하므로
-        # 진행률 콜백(on_page)은 extract_text 완료 후 일괄 호출합니다.
-        import asyncio
-        result = asyncio.run(extract_glmocr(file_bytes, filename))
-        if on_page:
-            on_page(result["total_pages"], result["total_pages"])
-        return result
 
     raise HTTPException(
         status_code=400,

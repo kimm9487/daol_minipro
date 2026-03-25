@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN python3 -m venv /opt/venv
 RUN /opt/venv/bin/pip install --upgrade pip setuptools wheel
 
-# 1. torch (CUDA 12.1 wheel) — GLM-OCR과 공유
+# 1. torch (CUDA 12.1 wheel)
 RUN /opt/venv/bin/pip install \
     torch==2.1.0 \
     torchvision==0.16.0 \

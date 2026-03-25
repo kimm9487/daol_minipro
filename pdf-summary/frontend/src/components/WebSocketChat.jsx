@@ -2,7 +2,9 @@
 import React, { useState, useEffect } from "react";
 import WebSocketChatWindow from "./websocketchat/WebSocketChatWindow";
 import "./websocketchat/WebSocketChat.css";
+
 import { io } from "socket.io-client";
+import { SOCKET_ORIGIN } from "../config/api";
 
 export default function WebSocketChat() {
   const [showChat, setShowChat] = useState(false);
@@ -33,8 +35,9 @@ export default function WebSocketChat() {
       return;
     }
 
-    // 프록시를 통한 동적 연결 (현재 페이지 호스트 기반)
-    const newSocket = io(window.location.origin, {
+
+    // 환경변수 기반 동적 연결 (SOCKET_ORIGIN)
+    const newSocket = io(SOCKET_ORIGIN, {
       path: "/socket.io",
       transports: ["websocket", "polling"],
       reconnection: true,
@@ -45,7 +48,7 @@ export default function WebSocketChat() {
       withCredentials: true,
     });
 
-    console.log("[Socket] 연결 시도:", window.location.origin + "/socket.io");
+    console.log("[Socket] 연결 시도:", SOCKET_ORIGIN + "/socket.io");
 
     newSocket.on("connect", () => {
       console.log("[Background Socket] 연결 성공!");
