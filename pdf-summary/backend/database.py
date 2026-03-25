@@ -11,10 +11,10 @@ import os
 load_dotenv(override=True)
 
 # 데이터베이스 접속 정보 (전달해주신 정보로 업데이트)
-DB_HOST     = os.getenv("DB_HOST", "192.168.0.151")
+DB_HOST     = os.getenv("DB_HOST", "localhost")
 DB_PORT     = os.getenv("DB_PORT", "3306")
 DB_USER     = os.getenv("DB_USER", "root")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "9487")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "1234")
 DB_NAME     = os.getenv("DB_NAME", "pdf_summary")
 
 # SQLAlchemy 연결 URL

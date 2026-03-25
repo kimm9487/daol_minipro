@@ -83,6 +83,7 @@ export const usePdfSummary = () => {
     if (!detail) return fallback;
     if (typeof detail === "string") return detail;
     if (Array.isArray(detail)) {
+      if (detail.length === 0) return fallback;
       const first = detail[0];
       if (typeof first === "string") return first;
       if (first && typeof first === "object") {

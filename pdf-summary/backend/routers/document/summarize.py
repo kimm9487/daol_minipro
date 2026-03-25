@@ -139,7 +139,7 @@ async def chat_summarize_stream(request: ChatSummarizeRequest):
                 collected.append(token)
                 yield _sse({"type": "token", "text": token})
         except Exception as exc:
-            detail = getattr(exc, "detail", str(exc))
+            detail = _stringify_detail(getattr(exc, "detail", str(exc)), "요약 중 오류가 발생했습니다.")
             yield _sse({"type": "error", "detail": detail})
             return
 
