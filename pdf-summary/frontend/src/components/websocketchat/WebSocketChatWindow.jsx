@@ -736,7 +736,7 @@ export default function WebSocketChatWindow({
         </div>
       )}
 
-      {/* ─── DM 탭: 1대넜 대화 목록 또는 룸 뷰 ─── */}
+      {/* ─── DM 탭: 1대 nextProps 대화 목록 또는 룸 뷰 ─── */}
       {effectiveActiveTab === "dm" && (
         <div className="chat-section dm-section">
           {activeDmUserId ? (

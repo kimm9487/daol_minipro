@@ -1,3 +1,4 @@
+// commit touch: 260327_웹소켓 도커 최종
 // 소켓 이벤트 핸들러 팩토리 (챗·DM 전송, 룸 관리, 강퇴/밴, 타이핑)
 export const createWebSocketChatHandlers = ({
   socket,
