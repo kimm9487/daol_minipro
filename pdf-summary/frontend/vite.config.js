@@ -10,8 +10,7 @@ export default defineConfig(({ mode }) => {
   // 로컬: npm run dev → fallback: http://localhost:8000
   // 도커: VITE_BACKEND_TARGET 또는 BACKEND_HOST 환경변수
   const backendTarget = process.env.VITE_BACKEND_TARGET || process.env.BACKEND_HOST || "http://localhost:8000";
-  const socketTarget = process.env.VITE_SOCKET_TARGET || backendTarget;
-
+  const socketTarget = process.env.VITE_SOCKET_TARGET || "http://localhost:8001";
   console.log(`[Vite] Backend Target: ${backendTarget}`);
   console.log(`[Vite] Socket Target: ${socketTarget}`);
 

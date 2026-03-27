@@ -231,12 +231,28 @@ export default function WebSocketChat() {
       return;
     }
 
-    // ✅ 로컬 개발 환경에서 backend(8000)로 WebSocket 연결 강제
-    // localStorage에 backendSocketUrl이 있으면 우선 사용, 없으면 http://localhost:8000 사용
-    let socketUrl = localStorage.getItem('backendSocketUrl') || 'http://localhost:8000';
+    // ✅ 런타임 동적 WebSocket URL 결정 (yml 수정 불필요)
+    // 1. 환경변수(VITE_SOCKET_URL) 우선
+    // 2. localStorage에 저장된 백엔드 주소
+    // 3. 없으면 현재 페이지 origin 사용
+    const getSocketUrl = () => {
+      if (import.meta.env.VITE_SOCKET_URL) {
+        return import.meta.env.VITE_SOCKET_URL;
+      }
+      const stored = localStorage.getItem('backendSocketUrl');
+      if (stored) {
+        return stored;
+      }
+      return window.location.origin;
+    };
+    
+    // ✅ 프로토콜 선택 (https → wss, http → ws)
+    let url = getSocketUrl();
     if (window.location.protocol === 'https:') {
-      socketUrl = socketUrl.replace(/^http:/, 'https:');
+      url = url.replace(/^http:/, 'https:');
     }
+    
+    const socketUrl = url;
 
     // 강퇴 경고 문구 복원 → F5/재접속 시 즉시 동일 문구 표시
     const kickErrKey = getKickErrorCacheKey();
@@ -955,7 +971,7 @@ export default function WebSocketChat() {
       setDmReadStateByUserAndPersist,
     ],
   );
-
+  
   if (!hasAuthSession) return null;
 
   return (

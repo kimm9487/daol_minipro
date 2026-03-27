@@ -87,6 +87,7 @@ app.include_router(admin_router)
 app.include_router(document_router)
 app.mount("/socket.io", websocket_app)
 
+
 # --- 기본 루트 경로 ---
 @app.get("/")
 def root():

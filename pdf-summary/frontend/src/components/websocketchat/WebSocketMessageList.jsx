@@ -46,7 +46,7 @@ export default function MessageList({ messages, bottomRef }) {
         }
         return (
           <MessageBubble
-            key={`${item.senderId}-${item.timestamp}-${idx}`} // ← 이렇게 조합하면 충돌 거의 없음
+            key={`${item.senderId}-${item.timestamp}-${idx}`}
             message={item}
             showSenderInfo={item.showSenderInfo}
             isContinuous={item.isContinuous}
