@@ -27,14 +27,15 @@ export const getWebSocketDmPartnerId = (roomId, myId) => {
 export const createWebSocketChatStorage = ({
   userDbId,
   sessionToken,
-  storage = localStorage,
+  storage = sessionStorage,   // 기본값 sessionStorage
 }) => {
   // ─── 스토리지 키 생성 함수 ───────────────────────────────────────
   const sessionSuffix = sessionToken ? sessionToken.slice(-12) : "";
 
+  // 공개채팅 메시지 키는 public_chat_ prefix로 명확히 분리
   const getStorageKey = () =>
     userDbId && sessionToken
-      ? `chat_messages_user_${userDbId}_sess_${sessionSuffix}`
+      ? `public_chat_user_${userDbId}_sess_${sessionSuffix}`
       : null;
 
   const getDmStorageKey = (roomId) =>

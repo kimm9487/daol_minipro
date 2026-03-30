@@ -606,15 +606,6 @@ const ChatSummary = () => {
           <span>RAG 검색 문맥 사용</span>
         </label>
 
-        <label className="toggle-row">
-          <input
-            type="checkbox"
-            checked={useLora}
-            onChange={(e) => setUseLora(e.target.checked)}
-          />
-          <span>LoRA 파인튜닝 모델 사용</span>
-        </label>
-
         <button type="button" className="primary-btn" onClick={handleExtract} disabled={loadingExtract}>
           {loadingExtract ? "추출 중..." : "문서 텍스트 추출"}
         </button>

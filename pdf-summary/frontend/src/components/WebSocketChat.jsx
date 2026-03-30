@@ -1,5 +1,11 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+} from "react";
 import WebSocketChatWindow from "./websocketchat/WebSocketChatWindow";
 import "./websocketchat/WebSocketChat.css";
 import {
@@ -18,6 +24,32 @@ import { io } from "socket.io-client";
 import toast from "react-hot-toast";
 
 export default function WebSocketChat() {
+  // 로그아웃 시점에 공개채팅 메시지 상태 초기화
+  useEffect(() => {
+    const handleAuthChange = () => {
+      console.log(
+        "[WebSocketChat] authStateChanged → 공개채팅(sessionStorage) 초기화",
+      );
+
+      setMessages([]);
+      setUnreadCount(0);
+
+      // sessionStorage 청소
+      Object.keys(sessionStorage).forEach((key) => {
+        if (
+          key.startsWith("public_chat_") ||
+          key.startsWith("chat_messages_user_")
+        ) {
+          sessionStorage.removeItem(key);
+        }
+      });
+    };
+
+    window.addEventListener("authStateChanged", handleAuthChange);
+    return () =>
+      window.removeEventListener("authStateChanged", handleAuthChange);
+  }, []);
+
   const [showChat, setShowChat] = useState(false);
   const [messages, setMessages] = useState([]);
   const [dmMessages, setDmMessages] = useState([]);
@@ -37,7 +69,7 @@ export default function WebSocketChat() {
   const [connectionError, setConnectionError] = useState(null);
   const [typingUsers, setTypingUsers] = useState([]);
   const [dmTypingUsers, setDmTypingUsers] = useState([]);
-  const [banInfo, setBanInfo] = useState(null);      // 내가 차단당했을 때
+  const [banInfo, setBanInfo] = useState(null); // 내가 차단당했을 때
   const [bannedUsers, setBannedUsers] = useState([]); // 관리자용 차단 목록
 
   // 플로팅 패널 외부 클릭 감지를 위한 ref
@@ -87,7 +119,12 @@ export default function WebSocketChat() {
     readPersistedJson,
     persistDmRoomMessages,
   } = useMemo(
-    () => createWebSocketChatStorage({ userDbId, sessionToken, storage: localStorage }),
+    () =>
+      createWebSocketChatStorage({
+        userDbId,
+        sessionToken,
+        storage: sessionStorage,
+      }),
     [userDbId, sessionToken],
   );
 
@@ -113,10 +150,15 @@ export default function WebSocketChat() {
         getDmReadStateStorageKey,
         setDmReadStateByUser,
         socket,
-        storage: localStorage,
+        storage: localStorage, // DM은 기존대로 localStorage 사용
       }),
     // socket이 바뀔 때만 재생성, storage 함수들은 이미 useMemo로 안정화됨
-    [socket, getDmThreadStorageKey, getDmUnreadStorageKey, getDmReadStateStorageKey],
+    [
+      socket,
+      getDmThreadStorageKey,
+      getDmUnreadStorageKey,
+      getDmReadStateStorageKey,
+    ],
   );
 
   const resetDmRuntimeState = useCallback(() => {
@@ -204,55 +246,66 @@ export default function WebSocketChat() {
 
   // ==================== 로그인 직후 백그라운드 연결 ====================
   useEffect(() => {
+    // hasAuthSession이 false일 때 (로그아웃 / 세션 만료)
     if (!hasAuthSession) {
       if (socket) {
         try {
-          if (socket.connected) {
-            socket.emit("logout");
-          }
-        } finally {
+          if (socket.connected) socket.emit("logout");
           socket.disconnect();
+        } catch (e) {
+          console.warn("[WebSocketChat] socket disconnect error on logout", e);
         }
       }
+
+      // ✅ 공개채팅 완전 초기화 (sessionStorage 청소 + 상태 초기화)ㄴ
       setMessages([]);
-      setDmMessages([]);
-      setDmRoomId("");
-      setActiveDmUserId(null);
+      setUnreadCount(0);
+
+      // sessionStorage 청소 (더 안전한 방식)
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const key = sessionStorage.key(i);
+        if (
+          key &&
+          (key.startsWith("public_chat_") ||
+            key.startsWith("chat_messages_user_"))
+        ) {
+          sessionStorage.removeItem(key);
+        }
+      }
+
+      // DM 상태 초기화
+      resetDmRuntimeState();
       setDmUnreadByUser({});
       setDmThreadUserIds([]);
       setDmLastByUser({});
       setDmUserNamesById({});
-      setDmTypingUsers([]);
-      setIsViewingDmRoom(false);
-      setUnreadCount(0);
+      setDmReadStateByUser({});
+      setDmMessages([]);
       setOnlineUsers([]);
       setIsConnected(false);
+      setBanInfo(null);
+      setConnectionError(null);
       setSocket(null);
+
       return;
     }
 
-    // ✅ 런타임 동적 WebSocket URL 결정 (yml 수정 불필요)
-    // 1. 환경변수(VITE_SOCKET_URL) 우선
-    // 2. localStorage에 저장된 백엔드 주소
-    // 3. 없으면 현재 페이지 origin 사용
+    // ✅ WebSocket URL: 환경변수(VITE_SOCKET_URL) → 없으면 현재 페이지 origin 사용
     const getSocketUrl = () => {
       if (import.meta.env.VITE_SOCKET_URL) {
         return import.meta.env.VITE_SOCKET_URL;
       }
-      const stored = localStorage.getItem('backendSocketUrl');
-      if (stored) {
-        return stored;
-      }
       return window.location.origin;
     };
-    
-    // ✅ 프로토콜 선택 (https → wss, http → ws)
-    let url = getSocketUrl();
-    if (window.location.protocol === 'https:') {
-      url = url.replace(/^http:/, 'https:');
+
+    // 프로토콜 자동 변환 (https → wss, http → ws)
+    let socketUrl = getSocketUrl();
+    if (window.location.protocol === "https:") {
+      socketUrl = socketUrl.replace(/^http:/, "https:");
+      socketUrl = socketUrl.replace(/^ws:/, "wss:");
+    } else {
+      socketUrl = socketUrl.replace(/^wss:/, "ws:");
     }
-    
-    const socketUrl = url;
 
     // 강퇴 경고 문구 복원 → F5/재접속 시 즉시 동일 문구 표시
     const kickErrKey = getKickErrorCacheKey();
@@ -278,19 +331,21 @@ export default function WebSocketChat() {
           setBanInfo(parsed);
           setShowChat(true);
         }
-      } catch { /* 파싱 실패 시 무시 */ }
+      } catch {
+        /* 파싱 실패 시 무시 */
+      }
     }
     // 복원된 영구 정지가 있으면 바로 "ban" ref 설정 (connect에서 banInfo 안 지움)
     moderationDisconnectRef.current = hasSavedBan ? "ban" : "pending";
-    
+
     // Socket.IO 연결 (✅ reconnection 강화)
     const newSocket = io(socketUrl, {
       path: "/socket.io",
       transports: ["websocket", "polling"],
       reconnection: true,
-      reconnectionAttempts: 20,              // ← 20번 시도 (이전: 5)
-      reconnectionDelay: 1000,               // ← 1초 시작
-      reconnectionDelayMax: 10000,           // ← 최대 10초
+      reconnectionAttempts: 20, // ← 20번 시도 (이전: 5)
+      reconnectionDelay: 1000, // ← 1초 시작
+      reconnectionDelayMax: 10000, // ← 최대 10초
       timeout: 20000,
       auth: { session_token: sessionToken },
       withCredentials: true,
@@ -299,20 +354,20 @@ export default function WebSocketChat() {
     newSocket.on("connect", () => {
       setIsConnected(true);
       const wasBannedOnConnect = moderationDisconnectRef.current === "ban";
-      
+
       // ✅ ban 상태가 아닐 때만 connectionError 제거 (1일채팅금지는 유지)
       if (!wasBannedOnConnect) {
         setConnectionError(null);
         if (kickErrKey) localStorage.removeItem(kickErrKey);
         setBanInfo(null);
       }
-      
+
       moderationDisconnectRef.current = wasBannedOnConnect ? "ban" : null;
 
       // 캐시 ban 복원 상태가 '기간제'인 경우에만 kickRejected 미수신 시 자동 해제 확인을 수행한다.
       // 영구 정지는 관리자 해제 전까지 절대 자동 해제하지 않는다.
       if (wasBannedOnConnect && !hasSavedPermanentBan) {
-        pendingBanCheckRef.current = true;  // 연결 직후 ban 확인 대기 중
+        pendingBanCheckRef.current = true; // 연결 직후 ban 확인 대기 중
 
         setTimeout(() => {
           // pendingBanCheckRef가 true인 채로 1500ms 지남 → kickRejected 안 옴 → 밴 해제된 것
@@ -347,9 +402,12 @@ export default function WebSocketChat() {
       setDmTypingUsers([]);
       setIsConnected(false);
       if (reason === "io client disconnect") return;
-      if (moderationDisconnectRef.current && reason === "io server disconnect") return;
+      if (moderationDisconnectRef.current && reason === "io server disconnect")
+        return;
       // 일반 네트워크 단절은 재로그인이 아니라 자동 재연결 대기 안내를 띄운다.
-      setConnectionError("연결이 일시적으로 끊겼습니다. 자동으로 다시 연결 중입니다...");
+      setConnectionError(
+        "연결이 일시적으로 끊겼습니다. 자동으로 다시 연결 중입니다...",
+      );
     });
 
     newSocket.on("connect_error", (err) => {
@@ -366,21 +424,30 @@ export default function WebSocketChat() {
 
     newSocket.on("reconnect_error", () => {
       if (moderationDisconnectRef.current) return;
-      setConnectionError("재연결 중입니다. 네트워크 상태를 확인하고 잠시만 기다려 주세요...");
+      setConnectionError(
+        "재연결 중입니다. 네트워크 상태를 확인하고 잠시만 기다려 주세요...",
+      );
     });
 
     newSocket.on("reconnect_failed", () => {
       if (moderationDisconnectRef.current) return;
-      setConnectionError("자동 재연결에 실패했습니다. 잠시 후 다시 연결을 시도합니다...");
+      setConnectionError(
+        "자동 재연결에 실패했습니다. 잠시 후 다시 연결을 시도합니다...",
+      );
     });
 
     newSocket.on("kickResult", (payload) => {
       if (!payload) return;
       if (payload.ok) {
-        const target = payload.targetName || payload.targetUserId || "대상 사용자";
+        const target =
+          payload.targetName || payload.targetUserId || "대상 사용자";
         const isPermanent = Boolean(payload?.isPermanent);
         const banSeconds = Number(payload?.banSeconds || 0);
-        const actionLabel = isPermanent ? "영구 정지" : banSeconds > 0 ? "1일 채팅 금지" : "강제 퇴장";
+        const actionLabel = isPermanent
+          ? "영구 정지"
+          : banSeconds > 0
+            ? "1일 채팅 금지"
+            : "강제 퇴장";
         toast.success(`${target} ${actionLabel} 처리 완료`);
         // 밴 처리 시 차단 목록 자동 갱신
         if (isPermanent || banSeconds > 0) {
@@ -400,7 +467,7 @@ export default function WebSocketChat() {
         moderationDisconnectRef.current = "ban";
         const newBanData = { reason, banSeconds, byName, isPermanent };
         setBanInfo(newBanData);
-        
+
         // ✅ 1일 채팅금지도 connectionError로 저장해서 두 섹션에서 경고 표시
         let kickMessage;
         if (isPermanent) {
@@ -411,7 +478,7 @@ export default function WebSocketChat() {
         setConnectionError(kickMessage);
         if (kickErrKey) localStorage.setItem(kickErrKey, kickMessage);
         setShowChat(true);
-        
+
         // ✅ 영구 정지 & 1일 채팅금지 모두 localStorage에 영속화 (F5 후 즉시 복원용)
         if (isPermanent || banSeconds > 0) {
           const key = getBanInfoCacheKey();
@@ -449,9 +516,15 @@ export default function WebSocketChat() {
       }
 
       moderationDisconnectRef.current = "ban";
-      const newBanData = { reason, ttlSeconds, banSeconds, byName, isPermanent };
+      const newBanData = {
+        reason,
+        ttlSeconds,
+        banSeconds,
+        byName,
+        isPermanent,
+      };
       setBanInfo(newBanData);
-      
+
       // ✅ 1일 채팅금지도 connectionError로 저장해서 두 섹션에서 경고 표시
       let kickMessage;
       if (isPermanent) {
@@ -462,7 +535,7 @@ export default function WebSocketChat() {
       setConnectionError(kickMessage);
       if (kickErrKey) localStorage.setItem(kickErrKey, kickMessage);
       setShowChat(true); // 채팅창 열어서 안내 표시
-      
+
       // ✅ 영구 정지 & 1일 채팅금지 모두 localStorage에 영속화 (F5 후 즉시 복원용)
       if (isPermanent || banSeconds > 0) {
         const key = getBanInfoCacheKey();
@@ -497,42 +570,26 @@ export default function WebSocketChat() {
       toast.success(`${byName}에 의해 제재 해제되었습니다.`);
     });
 
+    // initMessages 이벤트 수정
     newSocket.on("initMessages", (pastMessages) => {
-      if (Array.isArray(pastMessages) && pastMessages.length > 0) {
-        // ✅ 개선: 기존 메시지와 병합 (ID 기반 중복 제거)
-        const newMessages = pastMessages.filter(
-          msg => !messages.some(existing => existing.id === msg.id)
-        );
-        
-        const merged = [
-          ...messages,
-          ...newMessages.map(msg => ({
-            ...msg,
-            isRead: true  // 과거 메시지(initMessages)는 이미 본 것으로 처리 → 새로고침 후 카운트 리셋
-          }))
-        ].sort((a, b) => 
-          new Date(a.timestamp) - new Date(b.timestamp)
-        );
-        
-        // 중복 제거 (ID 기준)
-        const unique = Array.from(
-          new Map(merged.map(msg => [msg.id, msg])).values()
-        );
-        
-        setMessages(unique);
-        const key = getStorageKey();
-        if (key) localStorage.setItem(key, JSON.stringify(unique));
-        
-      }
+      console.log(
+        `[WebSocketChat] initMessages 수신됨 (${pastMessages?.length || 0}개) → 공개채팅은 실시간 스트리밍형이므로 무시합니다.`,
+      );
+
+      // 공개채팅은 과거 히스토리를 로드하지 않음
+      // F5 새로고침 시에만 sessionStorage에서 복원되도록 둡니다.
     });
 
     newSocket.on("receiveMessage", (payload) => {
       const msg = payload?.content ? payload : payload?.[0] || payload;
-      const currentUserId = localStorage.getItem("userDbId") || localStorage.getItem("userId");
-      const isMyMessage = String(msg.senderId || msg.sender || msg.userId) === String(currentUserId);
+      const currentUserId =
+        localStorage.getItem("userDbId") || localStorage.getItem("userId");
+      const isMyMessage =
+        String(msg.senderId || msg.sender || msg.userId) ===
+        String(currentUserId);
 
       const safeMsg = {
-        id: msg.id || `msg-${Date.now()}-${Math.random()}`,  // 없으면 생성
+        id: msg.id || `msg-${Date.now()}-${Math.random()}`, // 없으면 생성
         senderId: msg.senderId || msg.sender || msg.userId,
         senderName: msg.senderName || msg.name || msg.username || "",
         content: msg.content || msg.message || msg.text,
@@ -540,24 +597,25 @@ export default function WebSocketChat() {
         isSystem: msg.isSystem || false,
         // 채팅 탭을 실제로 보고 있을 때만 즉시 읽음 처리
         isRead:
-          isMyMessage ||
-          (showChatRef.current && isViewingChatTabRef.current),
+          isMyMessage || (showChatRef.current && isViewingChatTabRef.current),
       };
-      
+
       setMessages((prev) => {
         if (safeMsg.id && prev.some((existing) => existing.id === safeMsg.id)) {
           return prev;
         }
         const updated = [...prev, safeMsg];
         const key = getStorageKey();
-        if (key) localStorage.setItem(key, JSON.stringify(updated));
+        if (key) sessionStorage.setItem(key, JSON.stringify(updated)); // ← sessionStorage로 변경
         return updated;
       });
 
       // 메시지가 도착하면 해당 사용자의 입력 중 상태는 해제
       const sender = String(msg.senderId || msg.sender || msg.userId || "");
       if (sender) {
-        setTypingUsers((prev) => prev.filter((user) => String(user.userId) !== sender));
+        setTypingUsers((prev) =>
+          prev.filter((user) => String(user.userId) !== sender),
+        );
       }
     });
 
@@ -568,9 +626,7 @@ export default function WebSocketChat() {
     newSocket.on("dmHistory", (payload) => {
       const roomId = String(payload?.roomId || "");
       const targetUserId = String(payload?.targetUserId || "");
-      const history = Array.isArray(payload?.messages)
-        ? payload.messages
-        : [];
+      const history = Array.isArray(payload?.messages) ? payload.messages : [];
 
       const { value: persistedRoomValue } = readPersistedJson([
         getDmStorageKey(roomId),
@@ -602,7 +658,8 @@ export default function WebSocketChat() {
         registerDmThreadUser(targetUserId);
         markDmThreadRead(
           targetUserId,
-          effectiveMessages[effectiveMessages.length - 1]?.timestamp || new Date().toISOString(),
+          effectiveMessages[effectiveMessages.length - 1]?.timestamp ||
+            new Date().toISOString(),
         );
         if (effectiveMessages.length > 0) {
           updateDmLastPreview(
@@ -643,7 +700,9 @@ export default function WebSocketChat() {
       if (safeMsg.id) {
         processedDmMessageIdsRef.current.add(safeMsg.id);
         if (processedDmMessageIdsRef.current.size > 2000) {
-          const oldestId = processedDmMessageIdsRef.current.values().next().value;
+          const oldestId = processedDmMessageIdsRef.current
+            .values()
+            .next().value;
           if (oldestId) processedDmMessageIdsRef.current.delete(oldestId);
         }
       }
@@ -658,9 +717,15 @@ export default function WebSocketChat() {
           getLegacyDmStorageKey(roomId),
         ]);
         try {
-          const prevList = Array.isArray(persistedRoomValue) ? persistedRoomValue : [];
+          const prevList = Array.isArray(persistedRoomValue)
+            ? persistedRoomValue
+            : [];
           const base = Array.isArray(prevList) ? prevList : [];
-          if (!base.some((existing) => String(existing?.id) === String(safeMsg.id))) {
+          if (
+            !base.some(
+              (existing) => String(existing?.id) === String(safeMsg.id),
+            )
+          ) {
             const next = [...base, safeMsg].sort(
               (a, b) => new Date(a.timestamp) - new Date(b.timestamp),
             );
@@ -705,7 +770,10 @@ export default function WebSocketChat() {
           [partnerId]: Number(prev[partnerId] || 0) + 1,
         }));
       } else if (!isMine && partnerId && isReadingCurrentRoom) {
-        markDmThreadRead(partnerId, safeMsg.timestamp || new Date().toISOString());
+        markDmThreadRead(
+          partnerId,
+          safeMsg.timestamp || new Date().toISOString(),
+        );
       }
 
       if (partnerId) {
@@ -772,7 +840,9 @@ export default function WebSocketChat() {
     });
 
     newSocket.on("dmThreadSummaries", (payload) => {
-      const summaries = Array.isArray(payload?.summaries) ? payload.summaries : [];
+      const summaries = Array.isArray(payload?.summaries)
+        ? payload.summaries
+        : [];
       if (!summaries.length) return;
       setDmUserNamesById((prev) => {
         const updated = { ...prev };
@@ -831,19 +901,25 @@ export default function WebSocketChat() {
       if (currentTimer) clearTimeout(currentTimer);
 
       if (!isTyping) {
-        setTypingUsers((prev) => prev.filter((user) => String(user.userId) !== typingUserId));
+        setTypingUsers((prev) =>
+          prev.filter((user) => String(user.userId) !== typingUserId),
+        );
         typingUserTimersRef.current.delete(typingUserId);
         return;
       }
 
       setTypingUsers((prev) => {
-        const filtered = prev.filter((user) => String(user.userId) !== typingUserId);
+        const filtered = prev.filter(
+          (user) => String(user.userId) !== typingUserId,
+        );
         return [...filtered, { userId: typingUserId, name: typingName }];
       });
 
       // stop 이벤트 누락 대비: 5초 후 자동 해제
       const timeoutId = setTimeout(() => {
-        setTypingUsers((prev) => prev.filter((user) => String(user.userId) !== typingUserId));
+        setTypingUsers((prev) =>
+          prev.filter((user) => String(user.userId) !== typingUserId),
+        );
         typingUserTimersRef.current.delete(typingUserId);
       }, 5000);
 
@@ -859,7 +935,7 @@ export default function WebSocketChat() {
       dmTypingUserTimersRef.current.clear();
       newSocket.disconnect();
     };
-  }, [hasAuthSession, sessionToken, userDbId]);
+  }, [hasAuthSession, sessionToken, userDbId, resetDmRuntimeState]);
 
   useWebSocketChatHydration({
     userDbId,
@@ -929,32 +1005,33 @@ export default function WebSocketChat() {
     handleDmTypingChange,
     handleTypingChange,
   } = useMemo(
-    () => createWebSocketChatHandlers({
-      socket,
-      userDbId,
-      normalizeUserId,
-      buildDmRoomId,
-      getDmStorageKey,
-      getLegacyDmStorageKey,
-      getDmThreadStorageKey,
-      readPersistedJson,
-      persistDmRoomMessages,
-      registerDmThreadUser,
-      markDmThreadRead,
-      setActiveDmUserId,
-      setDmRoomId,
-      dmRoomIdRef,
-      setDmTypingUsers,
-      setDmMessages,
-      activeDmUserIdRef,
-      setDmThreadUserIds,
-      setDmUnreadByUserAndPersist,
-      setDmReadStateByUserAndPersist,
-      setDmLastByUser,
-      dmTypingHeartbeatRef,
-      typingHeartbeatRef,
-      storage: localStorage,
-    }),
+    () =>
+      createWebSocketChatHandlers({
+        socket,
+        userDbId,
+        normalizeUserId,
+        buildDmRoomId,
+        getDmStorageKey,
+        getLegacyDmStorageKey,
+        getDmThreadStorageKey,
+        readPersistedJson,
+        persistDmRoomMessages,
+        registerDmThreadUser,
+        markDmThreadRead,
+        setActiveDmUserId,
+        setDmRoomId,
+        dmRoomIdRef,
+        setDmTypingUsers,
+        setDmMessages,
+        activeDmUserIdRef,
+        setDmThreadUserIds,
+        setDmUnreadByUserAndPersist,
+        setDmReadStateByUserAndPersist,
+        setDmLastByUser,
+        dmTypingHeartbeatRef,
+        typingHeartbeatRef,
+        storage: sessionStorage, // 공개채팅 메시지는 sessionStorage 사용
+      }),
     [
       socket,
       userDbId,
@@ -971,7 +1048,7 @@ export default function WebSocketChat() {
       setDmReadStateByUserAndPersist,
     ],
   );
-  
+
   if (!hasAuthSession) return null;
 
   return (
@@ -984,10 +1061,7 @@ export default function WebSocketChat() {
       >
         💬
         {totalUnreadCount > 0 && (
-          <span
-            key={`unread-${totalUnreadCount}`}
-            className="unread-badge"
-          >
+          <span key={`unread-${totalUnreadCount}`} className="unread-badge">
             {totalUnreadCount > 99 ? "99+" : totalUnreadCount}
           </span>
         )}

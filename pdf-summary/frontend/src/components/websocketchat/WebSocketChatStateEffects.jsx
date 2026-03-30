@@ -26,10 +26,10 @@ export const useWebSocketChatHydration = ({
   useEffect(() => {
     if (!userDbId || !sessionToken) return;
 
-      // 이미 hydration 완료된 경우 재실행하지 않음 (함수 참조 변경으로 재발화 방지)
-      if (dmMetaHydratedRef.current) return;
+    // 이미 hydration 완료된 경우 재실행하지 않음 (함수 참조 변경으로 재발화 방지)
+    if (dmMetaHydratedRef.current) return;
 
-      // ─── DM 메타(스레드·마지막 프리뷰·unread·이름·읽음상태) 복원 ────────────────
+    // ─── DM 메타(스레드·마지막 프리뷰·unread·이름·읽음상태) 복원 ────────────────
     let restoredThreadIds = [];
     let restoredLastByUser = {};
     let restoredUnreadByUser = {};
@@ -53,11 +53,17 @@ export const useWebSocketChatHydration = ({
           if (parsed?.unreadByUser && typeof parsed.unreadByUser === "object") {
             restoredUnreadByUser = parsed.unreadByUser;
           }
-          if (parsed?.userNamesById && typeof parsed.userNamesById === "object") {
+          if (
+            parsed?.userNamesById &&
+            typeof parsed.userNamesById === "object"
+          ) {
             restoredUserNamesById = parsed.userNamesById;
             setDmUserNamesById(restoredUserNamesById);
           }
-          if (parsed?.readStateByUser && typeof parsed.readStateByUser === "object") {
+          if (
+            parsed?.readStateByUser &&
+            typeof parsed.readStateByUser === "object"
+          ) {
             restoredReadStateByUser = parsed.readStateByUser;
             setDmReadStateByUser(restoredReadStateByUser);
           }
@@ -113,23 +119,29 @@ export const useWebSocketChatHydration = ({
 
     // ─── 공개 채팅 메시지 복원 ────────────────────────────────────────────
     const key = getStorageKey();
-    const saved = localStorage.getItem(key);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) setMessages(parsed);
-      } catch (e) {
-        console.error("[LocalStorage] 메시지 파싱 실패:", e);
+    if (key) {
+      const saved = sessionStorage.getItem(key); // localStorage 완전 제거
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setMessages(parsed);
+            return; // 성공 시 종료
+          }
+        } catch {
+          console.warn("[Storage] 공개채팅 파싱 실패, 초기화");
+          sessionStorage.removeItem(key);
+        }
       }
     }
+    // sessionStorage에 없으면 명시적으로 빈 배열 (재로그인 시 빈 상태 보장)
+    setMessages([]);
 
     // ─── DM 스레드 목록 복원 ────────────────────────────────────────────
     const threadKey = getDmThreadStorageKey();
     if (threadKey) {
-      const { key: restoredThreadKey, value: parsedThreadValue } = readPersistedJson([
-        threadKey,
-        getLegacyDmThreadStorageKey(),
-      ]);
+      const { key: restoredThreadKey, value: parsedThreadValue } =
+        readPersistedJson([threadKey, getLegacyDmThreadStorageKey()]);
       if (Array.isArray(parsedThreadValue)) {
         restoredThreadIds = parsedThreadValue.map((id) => String(id));
         setDmThreadUserIds(restoredThreadIds);
@@ -143,7 +155,9 @@ export const useWebSocketChatHydration = ({
     const suffix = sessionToken.slice(-12);
     const roomPrefixes = [
       userDbId ? `chat_dm_room_user_${userDbId}_` : null,
-      userDbId && sessionToken ? `chat_dm_user_${userDbId}_sess_${suffix}_` : null,
+      userDbId && sessionToken
+        ? `chat_dm_user_${userDbId}_sess_${suffix}_`
+        : null,
     ].filter(Boolean);
 
     const discoveredSet = new Set();
@@ -152,7 +166,9 @@ export const useWebSocketChatHydration = ({
 
     for (let i = 0; i < localStorage.length; i += 1) {
       const storageKey = localStorage.key(i);
-      const matchedPrefix = roomPrefixes.find((prefix) => storageKey?.startsWith(prefix));
+      const matchedPrefix = roomPrefixes.find((prefix) =>
+        storageKey?.startsWith(prefix),
+      );
       if (!storageKey || !matchedPrefix) continue;
 
       const roomId = storageKey.slice(matchedPrefix.length);
@@ -190,11 +206,13 @@ export const useWebSocketChatHydration = ({
           recoveredUserNamesById[partnerId] = String(latest.senderName).trim();
         }
 
-        const latestPreview = latest.content || latest.message || latest.text || "";
+        const latestPreview =
+          latest.content || latest.message || latest.text || "";
         const latestTimestamp = latest.timestamp
           ? new Date(latest.timestamp).toISOString()
           : new Date().toISOString();
-        const lastReadTs = new Date(restoredReadStateByUser[partnerId] || 0).getTime() || 0;
+        const lastReadTs =
+          new Date(restoredReadStateByUser[partnerId] || 0).getTime() || 0;
         const computedUnread = parsedRoom.filter((item) => {
           const itemTs = new Date(item?.timestamp || 0).getTime() || 0;
           return (
@@ -237,11 +255,16 @@ export const useWebSocketChatHydration = ({
     // ─── 모든 소스 병합 + 최종 상태 반영 + 메타 저장 ─────────────────────
     const finalThreadSet = new Set(restoredThreadIds);
     discoveredSet.forEach((id) => finalThreadSet.add(String(id)));
-    Object.keys(recoveredLastByUser || {}).forEach((id) => finalThreadSet.add(String(id)));
-    Object.keys(restoredUnreadByUser || {}).forEach((id) => finalThreadSet.add(String(id)));
+    Object.keys(recoveredLastByUser || {}).forEach((id) =>
+      finalThreadSet.add(String(id)),
+    );
+    Object.keys(restoredUnreadByUser || {}).forEach((id) =>
+      finalThreadSet.add(String(id)),
+    );
     const finalThreadIds = Array.from(finalThreadSet);
     setDmThreadUserIds(finalThreadIds);
-    if (threadKey) localStorage.setItem(threadKey, JSON.stringify(finalThreadIds));
+    if (threadKey)
+      localStorage.setItem(threadKey, JSON.stringify(finalThreadIds));
     if (Object.keys(restoredUnreadByUser).length > 0) {
       setDmUnreadByUser(restoredUnreadByUser);
     }
@@ -360,7 +383,13 @@ export const useWebSocketChatPostEffects = ({
       targetUserIds: dmThreadUserIds,
       lastReadByUser: dmReadStateByUser,
     });
-  }, [isConnected, socket, dmThreadUserIds, dmReadStateByUser, dmMetaHydratedRef]);
+  }, [
+    isConnected,
+    socket,
+    dmThreadUserIds,
+    dmReadStateByUser,
+    dmMetaHydratedRef,
+  ]);
 
   // 세션 만료/로그아웃 시 모든 채팅 상태 초기화 + localStorage 정리
   useEffect(() => {
@@ -406,23 +435,33 @@ export const useWebSocketChatPostEffects = ({
     setOnlineUsers,
   ]);
 
-  // 채팅 탭 포커스 시 메시지 읽음 처리 + 배지 카운트 초기화
+  // 채팅 탭 포커스 시 메시지 읽음 처리
   useEffect(() => {
     if (showChat && isViewingChatTab) {
       setMessagesForRead((prev) => {
         const updated = prev.map((msg) => ({ ...msg, isRead: true }));
         const key = getStorageKey();
-        if (key) localStorage.setItem(key, JSON.stringify(updated));
+        if (key) {
+          sessionStorage.setItem(key, JSON.stringify(updated)); // ← sessionStorage
+        }
         return updated;
       });
       setUnreadCount(0);
     }
-  }, [showChat, isViewingChatTab, setMessagesForRead, getStorageKey, setUnreadCount]);
+  }, [
+    showChat,
+    isViewingChatTab,
+    setMessagesForRead,
+    getStorageKey,
+    setUnreadCount,
+  ]);
 
   // 채팅 탭 비활성 시 안읽은 메시지 수 계산
   useEffect(() => {
     if (!showChat || !isViewingChatTab) {
-      const count = messages.filter((msg) => !msg.isSystem && !msg.isRead).length;
+      const count = messages.filter(
+        (msg) => !msg.isSystem && !msg.isRead,
+      ).length;
       setUnreadCountFromMessages(count);
     }
   }, [messages, showChat, isViewingChatTab, setUnreadCountFromMessages]);
