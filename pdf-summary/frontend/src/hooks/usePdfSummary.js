@@ -83,6 +83,7 @@ export const usePdfSummary = () => {
     if (!detail) return fallback;
     if (typeof detail === "string") return detail;
     if (Array.isArray(detail)) {
+      if (detail.length === 0) return fallback;
       const first = detail[0];
       if (typeof first === "string") return first;
       if (first && typeof first === "object") {
@@ -498,8 +499,8 @@ export const usePdfSummary = () => {
     try {
       const userDbId = localStorage.getItem("userDbId");
       const formData = new FormData();
-      formData.append("document_id", result.id);
-      formData.append("user_id", parseInt(userDbId));
+      formData.append("document_id", String(result.id));
+      formData.append("user_id", String(userDbId));
       formData.append("text_type", textType);
       formData.append("model", selectedModel);
       const res = await fetch(`${API_BASE}/documents/translate`, {

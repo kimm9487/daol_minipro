@@ -4,13 +4,24 @@ import react from "@vitejs/plugin-react";
 import http from "node:http";
 
 export default defineConfig(({ mode }) => {
+    // allowedHosts를 환경변수에서 읽기 (없으면 기존 nip.io 도메인 fallback)
+    const allowedHostsEnv = process.env.VITE_ALLOWED_HOSTS;
+    const allowedHosts = allowedHostsEnv
+      ? allowedHostsEnv.split(",").map(h => h.trim())
+      : ["192.168.0.151.nip.io"];
   const isDev = mode === "development" || mode === undefined;
-  
-  // ✅ 수정된 부분 1: 기본 폴백(fallback) 주소를 nip.io로 변경
-  // 로컬: npm run dev → fallback: http://127.0.0.1.nip.io:8000
-  const backendTarget = process.env.VITE_BACKEND_TARGET || process.env.BACKEND_HOST || "http://127.0.0.1.nip.io:8000";
 
+  // 환경변수에서 백엔드 주소 읽기 (없으면 기본값)
+  // 로컬: npm run dev → fallback: http://localhost:8000
+  // 도커: VITE_BACKEND_TARGET 또는 BACKEND_HOST 환경변수
+  const backendTarget =
+    process.env.VITE_BACKEND_TARGET ||
+    process.env.BACKEND_HOST ||
+    "http://localhost:8000";
+  const socketTarget =
+    process.env.VITE_SOCKET_TARGET || "http://localhost:8001";
   console.log(`[Vite] Backend Target: ${backendTarget}`);
+  console.log(`[Vite] Socket Target: ${socketTarget}`);
 
   return {
     plugins: [react()],
@@ -19,31 +30,34 @@ export default defineConfig(({ mode }) => {
       ? {
           host: "0.0.0.0",
           port: 5173,
-          
-          // ✅ 수정된 부분 2: nip.io 도메인 접속을 차단하지 않도록 허용
-          allowedHosts: true, // 또는 [".nip.io"] 로 특정할 수도 있습니다.
+          allowedHosts,
 
           proxy: {
             // ✅ Socket.IO (WebSocket 포함)
             "/socket.io": {
-              target: backendTarget,
+              target: socketTarget,  
               ws: true,
               changeOrigin: true,
               secure: false,
               rejectUnauthorized: false,
               agent: new http.Agent({ keepAlive: true }),
               headers: {
-                Origin: backendTarget,
+                Origin: socketTarget,
               },
 
               configure: (proxy) => {
-                proxy.on("proxyReqWs", (proxyReq, req, res, options) => {
-                  console.log("[VITE-WS] WebSocket 프록시 요청 →", req.url, "→", backendTarget);
+                proxy.on("proxyReqWs", (_proxyReq, req) => {
+                  console.log(
+                    "[VITE-WS] WebSocket 프록시 요청 →",
+                    req.url,
+                    "→",
+                    socketTarget,
+                  );
                 });
 
-                proxy.on("error", (err, req, res) => {
+                proxy.on("error", (err) => {
                   console.error("[VITE-WS] 프록시 에러:", err.message);
-                  console.error("[VITE-WS] 타겟:", backendTarget);
+                  console.error("[VITE-WS] 타겟:", socketTarget);
                 });
               },
             },

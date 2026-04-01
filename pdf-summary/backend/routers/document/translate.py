@@ -1,11 +1,18 @@
 from fastapi import APIRouter, Form, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+import datetime
 import json
 import time
 
 from services.ai_service_extract import translate_to_english_stream
-from database import get_db, PdfDocument, can_user_access_document, log_admin_activity
+from database import (
+    SessionLocal,
+    get_db,
+    PdfDocument,
+    can_user_access_document,
+    log_admin_activity,
+)
 
 translate_router = APIRouter(tags=["Translation"])
 
@@ -53,6 +60,9 @@ async def translate_text(
         raise HTTPException(status_code=400, detail="text_type은 'original' 또는 'summary'여야 합니다.")
 
     ip_address = request.client.host if request.client else "unknown"
+    doc_id = doc.id
+    cached_translation = existing_translation
+    cached_translation_model = doc.translation_model
 
     def _sse(data: dict) -> str:
         return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
@@ -60,12 +70,12 @@ async def translate_text(
     async def generate():
         # 캐시 히트: DB에 저장된 번역 결과를 단어 단위로 쪼개 token 이벤트로 스트리밍.
         # 실제 LLM 호출 없이도 프론트엔드에서 동일한 타이핑 효과 연출 가능.
-        if existing_translation and doc.translation_model == model:
-            words = existing_translation.split(" ")
+        if cached_translation and cached_translation_model == model:
+            words = cached_translation.split(" ")
             for i, word in enumerate(words):
                 token = word if i == 0 else " " + word
                 yield _sse({"type": "token", "text": token})
-            yield _sse({"type": "done", "translated_text": existing_translation, "from_cache": True})
+            yield _sse({"type": "done", "translated_text": cached_translation, "from_cache": True})
             return
 
         start_time = time.time()
@@ -82,29 +92,45 @@ async def translate_text(
         full_translation = "".join(collected)
         translation_time = time.time() - start_time
 
-        if text_type == "original":
-            doc.original_translation = full_translation
-        else:
-            doc.summary_translation = full_translation
-        doc.translation_model = model
-        doc.translation_time_seconds = round(translation_time, 3)
-        db.commit()
-        db.refresh(doc)
+        independent_db = SessionLocal()
+        try:
+            independent_doc = independent_db.query(PdfDocument).filter(
+                PdfDocument.id == doc_id
+            ).first()
+            if not independent_doc:
+                yield _sse({"type": "error", "detail": "문서를 찾을 수 없습니다."})
+                return
 
-        log_admin_activity(
-            db=db,
-            admin_user_id=user_id,
-            action="DOCUMENT_TRANSLATED",
-            target_type="DOCUMENT",
-            target_id=document_id,
-            details=json.dumps({
-                "text_type": text_type,
-                "model": model,
-                "original_length": len(text_to_translate),
-                "translated_length": len(full_translation),
-            }),
-            ip_address=ip_address,
-        )
+            if text_type == "original":
+                independent_doc.original_translation = full_translation
+            else:
+                independent_doc.summary_translation = full_translation
+            independent_doc.translation_model = model
+            independent_doc.translation_time_seconds = round(translation_time, 3)
+            independent_doc.updated_at = datetime.datetime.now()
+            independent_db.commit()
+
+            log_admin_activity(
+                db=independent_db,
+                admin_user_id=user_id,
+                action="DOCUMENT_TRANSLATED",
+                target_type="DOCUMENT",
+                target_id=doc_id,
+                details=json.dumps({
+                    "text_type": text_type,
+                    "model": model,
+                    "original_length": len(text_to_translate),
+                    "translated_length": len(full_translation),
+                }),
+                ip_address=ip_address,
+            )
+        except Exception as exc:
+            independent_db.rollback()
+            detail = getattr(exc, "detail", str(exc))
+            yield _sse({"type": "error", "detail": detail})
+            return
+        finally:
+            independent_db.close()
 
         yield _sse({
             "type": "done",

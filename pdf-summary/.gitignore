@@ -11,9 +11,6 @@ node_modules
 dist
 dist-ssr
 *.local
-# Environments
-.env
-.env.local
 
 # Editor directories and files
 .vscode/*
@@ -83,4 +80,3 @@ temp/
 *.tmp
 *.cache
 Thumbs.db
-.ipynb_checkpoints/
