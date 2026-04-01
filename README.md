@@ -1,275 +1,215 @@
-﻿
-# Daol Project: PDF 요약/번역/대화형 AI 시스템
+# Daol Mini Project
 
-PDF/문서/이미지 업로드, AI 요약/번역, 대화형 LLM, 가이드 챗봇, 실시간 웹소켓 채팅, 관리자 기능, 세션 관리 등 다양한 기능을 제공하는 통합 웹 애플리케이션입니다.
+PDF/문서 업로드부터 OCR, AI 요약/번역, 대화형 질의응답, 관리자 운영, 결제 연동까지 포함한 통합 서비스입니다.
 
----
+## 1. 문서 구성
 
----
+- 루트 통합 문서: 이 파일
+- 백엔드 상세 문서: pdf-summary/backend/README.md
+- 프론트 상세 문서: pdf-summary/frontend/README.md
 
-## 주요 기능
-
-- 다양한 문서 포맷 업로드 및 OCR/AI 요약/번역
-- 크로마DB 기반 벡터 검색 및 문서 임베딩
-- Ollama 기반 대화형 LLM(문서 질의응답, 요약, 번역)
-- 실시간 웹소켓 채팅(문서/AI/관리자/유저 간)
-- 가이드 챗봇(초보자 안내, FAQ)
-- 관리자/사용자 권한 분리, 세션 및 이력 관리
-- 문서 공개/비공개, 중요 문서 보호, CSV/ZIP 다운로드
-- 실시간 대시보드, 통계, 알림
-
----
-
-## 프로젝트 구조
+## 2. 전체 구조
 
 ```text
 daol_minipro/
 ├── README.md
-├── environment.yml / conda_packages.txt / conda_pip.txt
+├── environment.yml
+├── conda_packages.txt
+├── conda_pip.txt
 └── pdf-summary/
-  ├── docker-compose.yml
-  ├── backend/
-  │   ├── main.py                # FastAPI 진입점, WebSocket 서버
-  │   ├── celery_app.py          # Celery 태스크 큐
-  │   ├── database.py           # SQLAlchemy, MariaDB 연동
-  │   ├── requirements.txt      # 백엔드 의존성
-  │   ├── routers/              # API 라우터 (auth, admin, document, websocket 등)
-  │   ├── services/
-  │   │   ├── ai_service.py, ai_service_chat.py, ai_service_extract.py  # LLM/챗봇/추출
-  │   │   ├── pdf_service.py    # PDF/이미지 처리
-  │   │   └── ocr/              # easyocr, paddleocr, tesseract 등 OCR 엔진
-  │   ├── tasks/                # 비동기 문서 처리 태스크
-  │   ├── utils/                # 인증, 이메일, 디스코드 등 유틸
-  │   ├── websocket_main.py     # 웹소켓 서버 진입점
-  │   └── Dockerfile            # CUDA/AI 환경용
-  ├── frontend/
-  │   ├── package.json, Dockerfile
-  │   └── src/
-  │       ├── components/       # GuideChatbot, WebSocketChat 등
-  │       ├── pages/            # PdfSummary, AdminDashboard, ChatSummary 등
-  │       └── ...
-  ├── db-backups/               # DB 백업 SQL
-  └── frontend_old/             # 레거시 프론트엔드
+    ├── docker-compose.yml
+    ├── backend/
+    │   ├── README.md
+    │   ├── main.py
+    │   ├── websocket_main.py
+    │   ├── celery_app.py
+    │   ├── database.py
+    │   ├── database_migration.sql
+    │   ├── requirements.txt
+    │   ├── routers/
+    │   │   ├── auth/
+    │   │   ├── admin/
+    │   │   ├── document/
+    │   │   ├── payment/
+    │   │   └── websocket/
+    │   ├── services/
+    │   ├── tasks/
+    │   └── utils/
+    ├── frontend/
+    │   ├── README.md
+    │   ├── package.json
+    │   ├── vite.config.js
+    │   └── src/
+    │       ├── components/
+    │       ├── config/
+    │       ├── hooks/
+    │       └── pages/
+    ├── db-backups/
+    └── frontend_old/
 ```
 
----
+## 3. 핵심 기능
 
-## 기술 스택
+- 문서 업로드, OCR, 요약, 번역
+- 문서 기반 대화형 Q&A
+- 공개/비공개, 중요문서 비밀번호, 다운로드(CSV/ZIP)
+- 관리자 대시보드(사용자/문서/시스템/결제 로그)
+- KakaoPay 결제 연동(공개+중요 문서)
 
+## 4. 기술 스택
 
-| 구분          | 기술/라이브러리                                   |
-| ------------- | ------------------------------------------------ |
-| Frontend      | React 19, Vite, React Router, WebSocket, GuideChatbot |
-| Backend       | FastAPI, Uvicorn, Celery, WebSocket, python-socketio |
-| AI/LLM        | Ollama, ChromaDB(벡터DB), PyTorch, PaddleOCR, EasyOCR, Tesseract |
-| DB            | MariaDB                                          |
-| ORM           | SQLAlchemy                                       |
-| 기타          | Docker, docker-compose, Redis, Flower, etc.      |
+| 구분 | 사용 기술 |
+| --- | --- |
+| Frontend | React 19, Vite, React Router DOM 7, socket.io-client |
+| Backend | FastAPI, Uvicorn, SQLAlchemy, python-socketio |
+| Async | Celery, Redis, Flower |
+| DB | MariaDB |
+| AI/OCR | Ollama, ChromaDB, PyPDF2, Tesseract, EasyOCR/PaddleOCR |
+| Infra | Docker Compose |
 
----
+## 5. 실행 방법
 
-## 실행 방법 (로컬)
-
-### 1. 백엔드 의존성 설치
-
-#### (1) conda 환경 생성/동기화
-최신 환경 전체 복원:
-```bash
-conda env create -f environment.yml
-conda activate tfod
-```
-또는 기존 환경 업데이트:
-```bash
-conda env update -f environment.yml --prune
-conda activate tfod
-```
-
-#### (2) pip 패키지 추가 설치(필요시)
-```bash
-cd pdf-summary/backend
-pip install -r requirements.txt
-```
-
-> requirements.txt는 최소 실행 패키지 목록입니다. 전체 환경 동기화는 environment.yml/conda_packages.txt/conda_pip.txt 참고.
-> easyocr, paddleocr, torch 등 일부 대형 패키지는 conda/Docker로 설치 권장(의존성 충돌 방지).
-
-
-### 2. DB 준비
-
-```bash
-cd pdf-summary/backend
-mysql -u root -p < database_migration.sql
-```
-
-
-환경변수 예시: `pdf-summary/backend/.env`
-
-```env
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=비밀번호
-DB_NAME=pdf_summary
-OLLAMA_BASE_URL=http://localhost:11434
-```
-
-
-### 3. Ollama 실행
-
-```bash
-ollama serve
-ollama pull gemma3:latest
-```
-
-
-### 4. 백엔드 실행
-
-```bash
-cd pdf-summary/backend
-python main.py
-```
-
-- API: `http://localhost:8000`
-- OpenAPI Docs: `http://localhost:8000/docs`
-
-
-### 5. 프론트엔드 실행
----
-## 패키지/환경 관리 주의사항
-
-- tfod 가상환경의 전체 패키지 목록은 conda_packages.txt, conda_pip.txt, environment.yml에 저장되어 있습니다.
-- requirements.txt는 최소 실행 패키지(코드 의존성 기준)만 포함합니다.
-- 환경 동기화가 필요할 때는 conda env export > environment.yml, pip freeze > conda_pip.txt 등으로 갱신하세요.
-- easyocr, paddleocr, torch 등 대형 패키지는 conda/Docker로 설치 권장(의존성 충돌 방지).
-- 환경/패키지 변경 후에는 반드시 재실행 및 호환성 확인 바랍니다.
-
-```bash
-cd pdf-summary/frontend
-npm install
-npm run dev
-```
-
-- Frontend: `http://localhost:5173`
-
----
-
-## 실행 방법 (Docker)
-
-선택: `pdf-summary/.env`로 Docker 환경변수를 덮어쓸 수 있습니다.
-
-```env
-MARIADB_ROOT_PASSWORD=9487
-MARIADB_DATABASE=pdf_summary
-MARIADB_USER=pdf_user
-MARIADB_PASSWORD=pdf_user_pw
-OLLAMA_BASE_URL=http://ollama:11434
-```
+### 5-1. Docker 실행 (권장)
 
 ```bash
 cd pdf-summary
 docker compose up --build
-
-# 최초 1회 모델 다운로드
-docker compose exec ollama ollama pull gemma3:latest
 ```
 
-- Backend: `http://localhost:8000`
-- Frontend: `http://localhost:5173`
-- DB: `localhost:3307` (`pdf_db` 컨테이너의 `3306` 포트를 호스트 `3307`로 매핑)
-- Ollama: `http://localhost:11434`
+기본 포트:
 
-초기 SQL(`backend/database_migration.sql`)은 DB 볼륨이 비어 있는 첫 실행 시 자동 적용됩니다.
-DB까지 완전 초기화하려면:
+- frontend: 5173
+- backend: 8000
+- websocket: 8001
+- mariadb(host): 3307
+- redis: 6379
+- chroma(host): 8002
+- ollama: 11434
+- flower: 5555
+
+종료/초기화:
 
 ```bash
+docker compose down
 docker compose down -v
-docker compose up --build
 ```
 
----
+### 5-2. 로컬 실행
 
-## API 개요
+```bash
+conda env create -f environment.yml
+conda activate tfod
 
-`summary_router`와 `is_public_router`는 `main.py`에서 `/api` prefix로 등록됩니다.
-아래 경로는 최종 호출 경로 기준입니다.
+cd pdf-summary/backend
+pip install -r requirements.txt
+mysql -u root -p < database_migration.sql
+python main.py
 
-### 인증/계정
+cd ../frontend
+npm install
+npm run dev
+```
 
-| 메서드   | 경로                         | 설명             |
-| -------- | ---------------------------- | ---------------- |
-| `POST`   | `/auth/register`             | 회원가입         |
-| `POST`   | `/auth/login`                | 로그인           |
-| `POST`   | `/auth/logout`               | 로그아웃         |
-| `GET`    | `/auth/check-id`             | 아이디 중복 확인 |
-| `GET`    | `/auth/profile/{user_db_id}` | 프로필 조회      |
-| `PUT`    | `/auth/profile/{user_db_id}` | 프로필 수정      |
-| `DELETE` | `/auth/withdraw/{username}`  | 회원 탈퇴        |
+접속:
 
-### 계정 찾기
+- API: http://localhost:8000
+- OpenAPI: http://localhost:8000/docs
+- Frontend: http://localhost:5173
 
-| 메서드 | 경로                       | 설명                          |
-| ------ | -------------------------- | ----------------------------- |
-| `POST` | `/auth/send-code-find-id`  | 아이디 찾기 인증코드 발송     |
-| `POST` | `/auth/send-code-reset-pw` | 비밀번호 재설정 인증코드 발송 |
-| `POST` | `/auth/verify-find-id`     | 아이디 찾기 인증 확인         |
-| `POST` | `/auth/verify-code`        | 비밀번호 재설정 인증 확인     |
-| `POST` | `/auth/reset-password`     | 비밀번호 재설정               |
+## 6. 백엔드 통합 요약
 
-### 문서/요약/번역 (`/api`)
+라우터 구성:
 
-| 메서드   | 경로                                 | 설명                            |
-| -------- | ------------------------------------ | ------------------------------- |
-| `POST`   | `/api/extract`                       | 파일 업로드 및 텍스트 추출/저장 |
-| `POST`   | `/api/summarize-document`            | 추출된 문서 요약 실행           |
-| `POST`   | `/api/summarize`                     | (레거시) 업로드+요약 일괄 처리  |
-| `POST`   | `/api/translate`                     | 원문/요약 영어 번역             |
-| `GET`    | `/api/document/{document_id}`        | 문서 상세 조회                  |
-| `GET`    | `/api/documents/{user_id}`           | 사용자 문서 목록 조회           |
-| `PUT`    | `/api/summarize/{document_id}`       | 문서 수정                       |
-| `DELETE` | `/api/summarize/{document_id}`       | 문서 삭제                       |
-| `GET`    | `/api/models`                        | 사용 가능한 LLM 모델 목록       |
-| `GET`    | `/api/ocr-models`                    | 사용 가능한 OCR 모델 목록       |
-| `POST`   | `/api/download`                      | 요약 TXT 다운로드               |
-| `PATCH`  | `/api/document/{document_id}/public` | 공개/비공개 변경                |
-| `GET`    | `/api/history/{user_db_id}`          | 사용자 문서 히스토리 조회       |
+- /auth: 로그인/회원가입/소셜로그인/세션
+- /api/documents: 추출/요약/번역/문서CRUD/다운로드
+- /api/admin: 사용자/문서/시스템/결제로그
+- /api/payments: KakaoPay ready/approve
+- /socket.io: websocket
 
-### 관리자/다운로드
+핵심 테이블:
 
-| 메서드   | 경로                                 | 설명                       |
-| -------- | ------------------------------------ | -------------------------- |
-| `GET`    | `/api/admin/documents`               | 전체 문서 조회             |
-| `DELETE` | `/api/admin/documents/{document_id}` | 문서 삭제                  |
-| `PUT`    | `/api/admin/documents/{document_id}` | 문서 수정                  |
-| `POST`   | `/api/admin/download-selected`       | 선택 문서 CSV/ZIP 다운로드 |
-| `GET`    | `/auth/users`                        | 전체 회원 조회             |
-| `DELETE` | `/auth/users/{user_id}`              | 회원 삭제                  |
+- users
+- user_sessions
+- pdf_documents
+- admin_activity_logs
+- payment_transactions
 
-### 세션
+대표 엔드포인트:
 
-| 메서드   | 경로                                | 설명                         |
-| -------- | ----------------------------------- | ---------------------------- |
-| `GET`    | `/auth/sessions/validate`           | 세션 유효성 확인             |
-| `GET`    | `/auth/sessions/current`            | 현재 활성 세션 조회          |
-| `DELETE` | `/auth/sessions/{session_id}`       | 특정 세션 종료               |
-| `GET`    | `/auth/login-history`               | 로그인 이력 조회             |
-| `GET`    | `/auth/admin/sessions`              | 관리자용 활성 세션 목록 조회 |
-| `DELETE` | `/auth/admin/sessions/{session_id}` | 관리자용 세션 강제 종료      |
+- POST /auth/login
+- POST /auth/register
+- GET /auth/sessions/validate
+- POST /api/documents/extract
+- POST /api/documents/summarize-document
+- POST /api/documents/translate
+- GET /api/admin/documents
+- GET /api/admin/documents/payment-logs
+- POST /api/payments/kakao/ready
+- POST /api/payments/kakao/approve
 
----
+## 7. 프론트엔드 통합 요약
 
-## 업로드/OCR 지원 형식
+주요 페이지:
 
-- `pypdf2`: `.pdf`만 지원
-- `tesseract`, `easyocr`, `paddleocr`:
-  `.pdf`, `.doc`, `.docx`, `.hwpx`, `.jpg`, `.jpeg`, `.png`, `.bmp`, `.webp`, `.tif`, `.tiff`, `.gif`
-- 구형 `.hwp`는 변환 한계로 실패 가능성이 있어 `.hwpx`, `.docx`, `.pdf` 변환 후 업로드를 권장합니다.
+- HomeHub
+- PdfSummary
+- ChatSummary
+- MyPage
+- UserList
+- AdminDashboard
+- Payment/KakaoSuccess, Payment/KakaoFail
 
----
+라우팅:
 
-## 참고 사항
+- 공개: /login, /register, /payments/kakao/success, /payments/kakao/fail
+- 보호: /, /pdf-summary, /chat-summary, /mypage, /userlist, /admin
 
-- CORS 허용 기본값은 `localhost:5173`, `localhost:5174`, `localhost:3000`, `localhost:8000` 등으로 설정되어 있으며, `CORS_ALLOW_ORIGINS`로 오버라이드할 수 있습니다.
-- 중요 문서가 포함된 선택 다운로드는 자동으로 ZIP 모드가 적용될 수 있습니다.
-- 문서 업로드의 핵심 처리 함수는 `pdf-summary/backend/routers/summary.py`의 `_build_extraction_document()`입니다.
-- 백엔드 실행 진입점은 `pdf-summary/backend/main.py`입니다.
+결제 동작:
 
+1. UserList에서 결제 대상 문서 선택
+2. /api/payments/kakao/ready 호출
+3. 결제창 팝업 오픈
+4. 결제 콜백 페이지에서 승인/실패 처리
+5. postMessage로 부모창(UserList) 상태 갱신
+
+## 8. 환경 변수
+
+백엔드 파일: pdf-summary/backend/.env
+
+기본:
+
+```env
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=your_password
+DB_NAME=pdf_summary
+CORS_ALLOW_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+OLLAMA_BASE_URL=http://localhost:11434
+CHROMA_BASE_URL=http://localhost:8000
+```
+
+KakaoPay 결제 전용:
+
+```env
+KAKAO_PAY_SECRET_KEY=YOUR_SECRET_KEY
+KAKAO_PAY_CID=TC0ONETIME
+FRONTEND_BASE_URL=http://localhost:5173
+```
+
+주의:
+
+- 결제 키(KAKAO_PAY_*)와 소셜 로그인 키(KAKAO_CLIENT_ID)는 별도입니다.
+- 결제 도메인 검증 오류 발생 시 Kakao Developers Web 플랫폼 사이트 도메인을 확인하세요.
+
+## 9. 결제 정책
+
+- 공개+중요 문서만 결제 대상
+- 문서 소유자/관리자는 결제 면제
+- 결제 이력은 payment_transactions에 저장
+- 관리자 결제 로그 조회: /api/admin/documents/payment-logs
+
+## 10. 상세 문서
+
+- Backend 상세: pdf-summary/backend/README.md
+- Frontend 상세: pdf-summary/frontend/README.md
