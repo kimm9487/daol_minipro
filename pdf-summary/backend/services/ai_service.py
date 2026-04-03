@@ -869,6 +869,7 @@ async def summarize_with_instruction_stream(
     user_scope: str = "shared",
     use_rag: bool = True,
     use_lora: bool = False,
+    cancel_event: Optional[asyncio.Event] = None,
 ) -> AsyncIterator[str]:
     """사용자 지시 기반 대화형 요약을 토큰 스트리밍으로 반환합니다."""
     MAX_CHARS = _CHAT_INPUT_MAX_CHARS
@@ -942,6 +943,9 @@ async def summarize_with_instruction_stream(
                     )
 
                 async for line in response.aiter_lines():
+                    if cancel_event and cancel_event.is_set():
+                        break
+
                     if not line:
                         continue
 
