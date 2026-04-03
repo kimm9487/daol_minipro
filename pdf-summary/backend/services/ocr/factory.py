@@ -13,8 +13,12 @@ from .easyocr_extractor import extract_text as extract_easyocr
 from .image_preprocess import preprocess_for_ocr
 from .markdown_layout import to_layout_markdown
 from .paddleocr_extractor import _build_reader as build_paddleocr_reader
-from .paddleocr_extractor import _extract_lines_from_result
+from .paddleocr_extractor import _extract_page_text as extract_paddle_page_text
+from .paddleocr_extractor import _extract_lines_from_result as _extract_paddle_lines
 from .paddleocr_extractor import extract_text as extract_paddleocr
+from .pororo_extractor import _get_pororo_ocr
+from .pororo_extractor import _run_ocr_on_image
+from .pororo_extractor import extract_text as extract_pororo
 from .pypdf2_extractor import extract_text as extract_pypdf2
 from .pdf_page_renderer import render_input_to_images
 from .tesseract_extractor import _extract_from_page
@@ -26,6 +30,7 @@ SUPPORTED_OCR_MODELS = {
     "tesseract": "Tesseract OCR (PDF + doc/docx/hwp)",
     "easyocr": "EasyOCR (PDF + doc/docx/hwp)",
     "paddleocr": "PaddleOCR (PDF + doc/docx/hwp)",
+    "pororo": "Pororo OCR - brainOCR (PDF + doc/docx/hwp)",
 }
 
 
@@ -47,6 +52,8 @@ async def extract_with_model(file_bytes: bytes, filename: str, ocr_model: str) -
         return await extract_easyocr(file_bytes, filename)
     if model == "paddleocr":
         return await extract_paddleocr(file_bytes, filename)
+    if model == "pororo":
+        return await extract_pororo(file_bytes, filename)
 
     raise HTTPException(
         status_code=400,
@@ -107,7 +114,10 @@ def extract_with_model_sync(
         except Exception:
             pass
 
-    images = render_input_to_images(file_bytes, extension)
+    render_scale = 2.0
+    if extension == ".pdf" and model == "paddleocr":
+        render_scale = float(os.getenv("PADDLE_PDF_RENDER_SCALE", "3.0"))
+    images = render_input_to_images(file_bytes, extension, scale=render_scale)
     total_pages = len(images)
     parts = []
     successful_pages = 0
@@ -155,23 +165,53 @@ def extract_with_model_sync(
         }
 
     if model == "paddleocr":
-        image_exts = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff", ".gif"}
-        use_custom_for_image = extension in image_exts
-        reader = build_paddleocr_reader("korean", prefer_custom=use_custom_for_image)
+        use_custom_model = os.getenv("PADDLE_USE_CUSTOM_MODEL", "true").lower() in {"1", "true", "yes", "on"}
+        reader = build_paddleocr_reader(
+            "korean",
+            prefer_custom=use_custom_model,
+            extension=extension,
+            use_custom_det=False,
+            use_custom_rec=True,
+        )
+        relaxed_reader = build_paddleocr_reader(
+            "korean",
+            prefer_custom=use_custom_model,
+            config_overrides={
+                "det_db_thresh": float(os.getenv("PADDLE_DET_DB_THRESH_RELAXED", "0.18")),
+                "det_db_box_thresh": float(os.getenv("PADDLE_DET_DB_BOX_THRESH_RELAXED", "0.35")),
+                "det_db_unclip_ratio": float(os.getenv("PADDLE_DET_DB_UNCLIP_RATIO_RELAXED", "2.0")),
+                "det_limit_side_len": int(os.getenv("PADDLE_DET_LIMIT_SIDE_LEN_RELAXED", "1536")),
+            },
+            extension=extension,
+            use_custom_det=False,
+            use_custom_rec=True,
+        )
+        default_reader = None
+        default_relaxed_reader = None
+        if use_custom_model:
+            default_reader = build_paddleocr_reader("korean", prefer_custom=False, extension=extension)
+            default_relaxed_reader = build_paddleocr_reader(
+                "korean",
+                prefer_custom=False,
+                config_overrides={
+                    "det_db_thresh": float(os.getenv("PADDLE_DET_DB_THRESH_RELAXED", "0.18")),
+                    "det_db_box_thresh": float(os.getenv("PADDLE_DET_DB_BOX_THRESH_RELAXED", "0.35")),
+                    "det_db_unclip_ratio": float(os.getenv("PADDLE_DET_DB_UNCLIP_RATIO_RELAXED", "2.0")),
+                    "det_limit_side_len": int(os.getenv("PADDLE_DET_LIMIT_SIDE_LEN_RELAXED", "1536")),
+                },
+                extension=extension,
+            )
 
         for idx, image in enumerate(images, start=1):
             try:
-                image_bgr = np.array(image)[:, :, ::-1]
-                result = reader.ocr(image_bgr)
-                lines = _extract_lines_from_result(result)
-                page_text = "\n".join(lines).strip()
+                page_text, detected_boxes = extract_paddle_page_text(reader, image, fallback_reader=relaxed_reader)
 
-                if not page_text:
-                    prepared = preprocess_for_ocr(image)
-                    prepared_bgr = np.array(prepared.convert("RGB"))[:, :, ::-1]
-                    retry = reader.ocr(prepared_bgr)
-                    retry_lines = _extract_lines_from_result(retry)
-                    page_text = "\n".join(retry_lines).strip()
+                if not page_text and use_custom_model and default_reader is not None:
+                    print(
+                        f"⚠️ PaddleOCR 기본 det + 커스텀 rec 결과 없음, 전체 기본 모델 폴백 시도 "
+                        f"(page={idx}, ext={extension or 'unknown'}, boxes={detected_boxes})"
+                    )
+                    page_text, _ = extract_paddle_page_text(default_reader, image, fallback_reader=default_relaxed_reader)
 
                 if page_text:
                     parts.append(f"[페이지 {idx}]\n{to_layout_markdown(page_text)}")
@@ -197,6 +237,43 @@ def extract_with_model_sync(
             "processing_time": time.time() - start_time,
             "char_count": len(merged),
             "ocr_model": "paddleocr",
+        }
+
+    if model == "pororo":
+        ocr = _get_pororo_ocr()
+
+        for idx, image in enumerate(images, start=1):
+            try:
+                page_text = _run_ocr_on_image(ocr, image)
+
+                if not page_text:
+                    prepared = preprocess_for_ocr(image)
+                    page_text = _run_ocr_on_image(ocr, prepared)
+
+                if page_text:
+                    parts.append(f"[페이지 {idx}]\n{to_layout_markdown(page_text)}")
+                    successful_pages += 1
+            except Exception as exc:
+                if first_error is None:
+                    first_error = str(exc)
+            finally:
+                if on_page:
+                    on_page(idx, total_pages)
+
+        merged = "\n\n".join(parts).strip()
+        if not merged:
+            detail = "Pororo OCR 추출 결과가 비어 있습니다."
+            if first_error:
+                detail += f" 첫 오류: {first_error}"
+            raise HTTPException(status_code=422, detail=detail)
+
+        return {
+            "text": merged,
+            "total_pages": total_pages,
+            "successful_pages": successful_pages,
+            "processing_time": time.time() - start_time,
+            "char_count": len(merged),
+            "ocr_model": "pororo",
         }
 
     if model == "tesseract":

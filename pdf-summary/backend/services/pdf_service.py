@@ -229,7 +229,7 @@ async def extract_text_from_pdf(file_bytes: bytes, filename: str, ocr_model: str
             detail={
                 "message": "pypdf2 모델은 PDF 파일만 지원합니다.",
                 "reason": "잘못된 파일 형식",
-                "suggestion": "OCR 모델(tesseract/easyocr/paddleocr/glmocr)을 선택하면 doc/docx/hwpx도 처리할 수 있습니다."
+                "suggestion": "OCR 모델(tesseract/easyocr/paddleocr/pororo)을 선택하면 doc/docx/hwpx도 처리할 수 있습니다."
             },
         )
 
