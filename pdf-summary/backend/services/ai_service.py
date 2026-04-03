@@ -378,6 +378,96 @@ def _get_chroma_http_client():
     return chromadb.HttpClient(host=host, port=port, ssl=ssl)
 
 
+async def _persist_chat_exchange_chunks(
+    *,
+    user_scope: str,
+    user_query: str,
+    assistant_answer: str,
+    model: str,
+) -> None:
+    """사용자 질의/LLM 응답을 청크로 분할해 하이브리드 컬렉션에 저장합니다."""
+    query_text = (user_query or "").strip()
+    answer_text = (assistant_answer or "").strip()
+    if not query_text and not answer_text:
+        return
+
+    chroma_client = _get_chroma_http_client()
+    if chroma_client is None:
+        return
+
+    scope = _sanitize_collection_suffix(user_scope)
+    owner_id = _extract_owner_id_from_scope(scope)
+    visibility = _resolve_visibility_from_scope(scope)
+    collection_name = _sanitize_collection_suffix(CHROMA_SHARED_COLLECTION)
+
+    try:
+        collection = chroma_client.get_or_create_collection(
+            name=collection_name,
+            metadata={"hnsw:space": "cosine"},
+        )
+    except Exception as exc:
+        print(f"⚠️ Chat 컬렉션 접근 실패: {str(exc)}")
+        return
+
+    transcript = (
+        f"[USER_QUERY]\n{query_text}\n\n"
+        f"[ASSISTANT_ANSWER]\n{answer_text}\n\n"
+        f"[MODEL]\n{(model or DEFAULT_MODEL).strip()}"
+    ).strip()
+
+    chunks = _split_text_for_rag(transcript, chunk_size=600, overlap=80)
+    if not chunks:
+        return
+
+    fingerprint = hashlib.sha1(transcript[:4000].encode("utf-8", errors="ignore")).hexdigest()[:12]
+    ids = []
+    documents = []
+    embeddings = []
+    metadatas = []
+
+    semaphore = asyncio.Semaphore(RAG_EMBED_MAX_CONCURRENCY)
+
+    async def _embed_chunk(idx: int, chunk: str):
+        async with semaphore:
+            emb = await _get_ollama_embedding(chunk)
+            return idx, chunk, emb
+
+    embed_tasks = [_embed_chunk(idx, chunk) for idx, chunk in enumerate(chunks)]
+    embed_results = await asyncio.gather(*embed_tasks)
+
+    for idx, chunk, emb in sorted(embed_results, key=lambda item: item[0]):
+        if emb is None:
+            continue
+        ids.append(f"chat-{fingerprint}-{idx}")
+        documents.append(chunk)
+        embeddings.append(emb)
+        metadatas.append(
+            {
+                "scope": scope,
+                "chunk_index": idx,
+                "owner_id": owner_id or "global",
+                "visibility": visibility,
+                "doc_fingerprint": fingerprint,
+                "source": "chat_history",
+            }
+        )
+
+    if not ids:
+        return
+
+    try:
+        existing = collection.get(ids=[f"chat-{fingerprint}-0"])
+        if not existing.get("ids"):
+            collection.upsert(
+                ids=ids,
+                documents=documents,
+                embeddings=embeddings,
+                metadatas=metadatas,
+            )
+    except Exception as exc:
+        print(f"⚠️ Chat 청크 저장 실패: {str(exc)}")
+
+
 async def _get_ollama_embedding(text: str, model: str = EMBEDDING_MODEL) -> Optional[List[float]]:
     input_text = (text or "").strip()
     if not input_text:
@@ -750,6 +840,15 @@ async def summarize_with_instruction(
 
             data = response.json()
             answer = data.get("response", "응답을 가져올 수 없습니다.")
+            try:
+                await _persist_chat_exchange_chunks(
+                    user_scope=user_scope,
+                    user_query=clean_instruction,
+                    assistant_answer=answer,
+                    model=selected_model,
+                )
+            except Exception as exc:
+                print(f"⚠️ Chat 이력 저장 실패: {str(exc)}")
             return answer
 
     except httpx.ConnectError:
@@ -770,6 +869,7 @@ async def summarize_with_instruction_stream(
     user_scope: str = "shared",
     use_rag: bool = True,
     use_lora: bool = False,
+    cancel_event: Optional[asyncio.Event] = None,
 ) -> AsyncIterator[str]:
     """사용자 지시 기반 대화형 요약을 토큰 스트리밍으로 반환합니다."""
     MAX_CHARS = _CHAT_INPUT_MAX_CHARS
@@ -815,6 +915,7 @@ async def summarize_with_instruction_stream(
     )
 
     try:
+        streamed_chunks: List[str] = []
         async with httpx.AsyncClient(timeout=600.0) as client:
             async with client.stream(
                 "POST",
@@ -842,6 +943,9 @@ async def summarize_with_instruction_stream(
                     )
 
                 async for line in response.aiter_lines():
+                    if cancel_event and cancel_event.is_set():
+                        break
+
                     if not line:
                         continue
 
@@ -852,10 +956,21 @@ async def summarize_with_instruction_stream(
 
                     chunk = payload.get("response", "")
                     if chunk:
+                        streamed_chunks.append(chunk)
                         yield chunk
 
                     if payload.get("done"):
                         break
+
+        try:
+            await _persist_chat_exchange_chunks(
+                user_scope=user_scope,
+                user_query=clean_instruction,
+                assistant_answer="".join(streamed_chunks),
+                model=selected_model,
+            )
+        except Exception as exc:
+            print(f"⚠️ Chat 이력 저장 실패: {str(exc)}")
 
     except httpx.ConnectError:
         raise HTTPException(

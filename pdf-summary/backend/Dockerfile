@@ -40,7 +40,16 @@ RUN /opt/venv/bin/pip install easyocr==1.7.1 --no-deps && \
 # 4. paddleocr (requirements.txt보다 먼저 → protobuf 고정 전에 의존성 풀기)
 RUN /opt/venv/bin/pip install paddleocr==2.7.3
 
-# 5. 기본 의존성 (protobuf 버전 마지막에 고정)
+# 5. pororo OCR (yunwoong7 bundled build — pip install pororo는 torch==1.6.0 강제하므로 사용 불가)
+#    대신 소스에서 OCR 전용 패키지만 venv site-packages에 직접 복사
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 https://github.com/yunwoong7/korean_ocr_using_pororo.git /tmp/kor_pororo \
+    && PYVER=$(/opt/venv/bin/python -c "import sys; print(f'python{sys.version_info.major}.{sys.version_info.minor}')") \
+    && cp -r /tmp/kor_pororo/pororo /opt/venv/lib/${PYVER}/site-packages/pororo \
+    && rm -rf /tmp/kor_pororo
+RUN /opt/venv/bin/pip install wget scikit-image
+
+# 6. 기본 의존성 (protobuf 버전 마지막에 고정)
 COPY requirements.txt ./
 RUN /opt/venv/bin/pip install -r requirements.txt
 

@@ -97,6 +97,7 @@ services:
       PADDLE_DET_DB_SCORE_MODE: "fast"
       PADDLE_DET_LIMIT_SIDE_LEN: "960"
       PADDLE_CUSTOM_MODEL_DIR: /app/paddletrain
+      TESSDATA_PREFIX: /tessdata
       USE_REDIS: "true"
       REDIS_URL: "redis://redis:6379/0"
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
@@ -112,6 +113,7 @@ services:
     volumes:
       - ./backend:/app
       - ./paddletrain:/app/paddletrain:ro
+      - ./tessdata:/tessdata:ro
 
   websocket:
     build: ./backend  # 💡 [추가] 이미지 빌드 컨텍스트 명시
@@ -186,6 +188,7 @@ services:
       PADDLE_DET_DB_SCORE_MODE: "fast"
       PADDLE_DET_LIMIT_SIDE_LEN: "960"
       PADDLE_CUSTOM_MODEL_DIR: /app/paddletrain
+      TESSDATA_PREFIX: /tessdata
     deploy:
       resources:
         reservations:
@@ -196,6 +199,7 @@ services:
     volumes:
       - ./backend:/app
       - ./paddletrain:/app/paddletrain:ro
+      - ./tessdata:/tessdata:ro
 
   worker_llm:
     build: ./backend  # 💡 [추가]
