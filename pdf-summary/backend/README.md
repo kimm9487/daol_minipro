@@ -18,15 +18,15 @@ FastAPI 기반 백엔드 서버입니다.
 
 ```text
 backend/
-├── main.py                                # FastAPI 앱 진입점, 라우터 등록
-├── websocket_main.py                      # Socket.IO 서버 (포트 8001)
-├── celery_app.py                          # Celery 앱 설정
-├── database.py                            # SQLAlchemy 엔진·세션·모델 Base
-├── database_migration.sql                 # 초기 스키마 마이그레이션
+├── main.py                                  # FastAPI 앱 진입점, 라우터 등록
+├── websocket_main.py                        # Socket.IO 서버 (포트 8001)
+├── celery_app.py                            # Celery 앱 설정
+├── database.py                              # SQLAlchemy 엔진·세션·모델 Base
+├── database_migration.sql                   # 초기 스키마 마이그레이션
 ├── database_migration_category_official.sql # 카테고리 컬럼 마이그레이션
-├── migrate_database.py                    # 마이그레이션 유틸리티 스크립트
-├── reset_password.py                      # 비밀번호 초기화 유틸리티
-├── test_password.py                       # 비밀번호 해시 검증 유틸리티
+├── migrate_database.py                      # 마이그레이션 유틸리티 스크립트
+├── reset_password.py                        # 비밀번호 초기화 유틸리티
+├── test_password.py                         # 비밀번호 해시 검증 유틸리티
 ├── requirements.txt
 ├── routers/
 │   ├── auth/
@@ -107,8 +107,6 @@ python migrate_database.py
 
 ```bash
 # FastAPI (포트 8000)
-python main.py
-# 또는
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 # Socket.IO WebSocket (포트 8001)
@@ -173,58 +171,64 @@ Docker Compose 서비스 목록:
 
 ### 인증/세션
 
-- POST /auth/login
-- POST /auth/register
-- POST /auth/logout
-- GET /auth/sessions/validate
-- GET /auth/sessions/current
-- DELETE /auth/sessions/{session_id}
+```
+POST   /auth/login
+POST   /auth/register
+POST   /auth/logout
+GET    /auth/sessions/validate
+GET    /auth/sessions/current
+DELETE /auth/sessions/{session_id}
+POST   /auth/find-account
+GET    /auth/social/kakao/login
+GET    /auth/social/kakao/callback
+```
 
-### 문서
+### 문서 (`/api/documents`)
 
-Prefix: /api/documents
+```
+POST   /extract
+POST   /summarize-document
+POST   /translate
+GET    /documents/{document_id}
+GET    /users/{user_id}/documents
+PATCH  /documents/{document_id}/public
+POST   /download-selected
+GET    /models
+GET    /ocr-models
+```
 
-- POST /extract
-- POST /summarize-document
-- POST /translate
-- GET /documents/{document_id}
-- GET /users/{user_id}/documents
-- PATCH /documents/{document_id}/public
-- POST /download-selected
-- GET /models
-- GET /ocr-models
+### 관리자 (`/api/admin`)
 
-### 관리자
+```
+GET    /documents
+PUT    /documents/{document_id}
+DELETE /documents/{document_id}
+GET    /documents/payment-logs
+GET    /users
+DELETE /users/{user_id}
+GET    /database-status
+GET    /chroma-status
+GET    /active-sessions
+```
 
-Prefix: /api/admin
+### 결제 (`/api/payments/kakao`)
 
-- GET /documents
-- PUT /documents/{document_id}
-- DELETE /documents/{document_id}
-- GET /documents/payment-logs
-- GET /users
-- DELETE /users/{user_id}
-- GET /database-status
-- GET /chroma-status
-
-### 결제 (KakaoPay)
-
-Prefix: /api/payments/kakao
-
-- POST /ready
-- POST /approve
+```
+POST   /ready
+POST   /approve
+```
 
 결제 정책:
 
 - 공개+중요 문서만 결제 대상
 - 문서 소유자와 관리자는 결제 면제
-- 결제 이력은 payment_transactions 테이블에 저장
+- 결제 이력은 `payment_transactions` 테이블에 저장
 
 ## 7. 환경 변수
 
-파일: backend/.env
+파일: `backend/.env`
 
-### DB/공통
+### DB / 공통
 
 ```env
 DB_HOST=127.0.0.1
@@ -232,18 +236,38 @@ DB_PORT=3306
 DB_USER=root
 DB_PASSWORD=your_password
 DB_NAME=pdf_summary
-
 CORS_ALLOW_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 ```
 
-### AI/큐
+### AI / 큐
 
 ```env
 OLLAMA_BASE_URL=http://localhost:11434
+EMBEDDING_MODEL=nomic-embed-text
+EXTRACT_DEFAULT_MODEL=gemma3:latest
+CHAT_DEFAULT_MODEL=exaone3.5:2.4b
+CHAT_NUM_CTX=4096
+CHAT_NUM_PREDICT=900
+CHAT_REPEAT_PENALTY=1.1
 CHROMA_BASE_URL=http://localhost:8000
 CHROMA_COLLECTION=documents
 CELERY_BROKER_URL=redis://localhost:6379/0
 CELERY_RESULT_BACKEND=redis://localhost:6379/1
+```
+
+### OCR
+
+```env
+OCR_USE_GPU=true
+PADDLE_DEVICE=gpu:0
+PADDLE_DET_DB_THRESH=0.3
+PADDLE_DET_DB_BOX_THRESH=0.6
+PADDLE_DET_DB_UNCLIP_RATIO=1.5
+PADDLE_DET_DB_SCORE_MODE=fast
+PADDLE_DET_LIMIT_SIDE_LEN=960
+PADDLE_CUSTOM_MODEL_DIR=/app/paddletrain
+TESSDATA_PREFIX=/tessdata
+LIBREOFFICE_PATH=/usr/bin/soffice
 ```
 
 ### KakaoPay (결제 전용)
@@ -254,30 +278,37 @@ KAKAO_PAY_CID=TC0ONETIME
 FRONTEND_BASE_URL=http://localhost:5173
 ```
 
-중요:
+### 소셜 로그인
 
-- 결제 키(KAKAO_PAY_*)와 소셜 로그인 키(KAKAO_CLIENT_ID)는 별도입니다.
-- 도메인 검증 오류가 나면 Kakao Developers에서 Web 플랫폼 사이트 도메인을 확인하세요.
+```env
+KAKAO_CLIENT_ID=YOUR_KAKAO_REST_API_KEY
+KAKAO_REDIRECT_URI=http://localhost:5173/auth/kakao/callback
+```
+
+### 알림
+
+```env
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+```
+
+> `KAKAO_PAY_*`(결제)와 `KAKAO_CLIENT_ID`(소셜 로그인)는 Kakao Developers에서 별도 앱 키입니다.
 
 ## 8. 데이터베이스 테이블
 
-핵심 테이블:
+| 테이블 | 역할 |
+| --- | --- |
+| users | 회원 정보 |
+| user_sessions | 로그인 세션 |
+| pdf_documents | 업로드 문서 메타/본문 |
+| admin_activity_logs | 관리자 활동 로그 |
+| payment_transactions | 결제 이력 |
 
-- users
-- user_sessions
-- pdf_documents
-- admin_activity_logs
-- payment_transactions
-
-payment_transactions 주요 컬럼:
-
-- document_id, user_id
-- provider, status, amount
-- partner_order_id, tid
-- approved_at, created_at, updated_at
+`payment_transactions` 주요 컬럼: `document_id`, `user_id`, `provider`, `status`, `amount`, `partner_order_id`, `tid`, `approved_at`
 
 ## 9. 개발 참고
 
-- main.py에서 Base.metadata.create_all이 실행되어 모델 테이블을 자동 생성 시도합니다.
-- 운영 환경에서는 database_migration.sql 기준으로 스키마를 관리하는 것을 권장합니다.
-- CORS는 CORS_ALLOW_ORIGINS 미설정 시 localhost 기본값으로 동작합니다.
+- `main.py` 기동 시 `Base.metadata.create_all`이 실행되어 테이블을 자동 생성 시도합니다.
+- 운영 환경에서는 `database_migration.sql` 기준으로 스키마를 관리하는 것을 권장합니다.
+- CORS는 `CORS_ALLOW_ORIGINS` 미설정 시 localhost 기본값으로 동작하며, IPv4 패턴을 정규식으로도 허용합니다.
+- PaddleOCR 커스텀 파인튜닝 모델은 `pdf-summary/paddletrain/` 디렉토리에 위치합니다.
+- Celery 워커는 GPU 리소스를 병렬 사용하므로 Docker 환경에서 `OCR_USE_GPU=false`로 CPU 폴백 가능합니다.
