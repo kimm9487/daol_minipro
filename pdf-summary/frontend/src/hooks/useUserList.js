@@ -196,7 +196,12 @@ export const useUserList = () => {
     [currentUserId],
   );
   const canCheck = useCallback(
-    (item) => item.isPublic || isMyDocument(item) || isAdmin,
+    (item) => {
+      if (isAdmin || isMyDocument(item)) return true;
+      if (!item.isPublic) return false;
+      if (item.isImportant) return Boolean(item.isPaidByViewer);
+      return true;
+    },
     [isMyDocument, isAdmin],
   );
   const canView = useCallback(
@@ -222,6 +227,15 @@ export const useUserList = () => {
     (item) => (requiresPayment(item) ? "결제" : "보기"),
     [requiresPayment],
   );
+
+  useEffect(() => {
+    setSelectedItems((prev) =>
+      prev.filter((id) => {
+        const doc = data.find((item) => Number(item.id) === Number(id));
+        return Boolean(doc && canCheck(doc));
+      }),
+    );
+  }, [data, canCheck]);
 
   // 필터링 및 정렬 처리
   let filteredData = [...data];

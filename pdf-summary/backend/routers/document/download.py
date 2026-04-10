@@ -11,7 +11,7 @@ import pyzipper
 from urllib.parse import quote
 import json
 
-from database import get_db, PdfDocument, User, log_admin_activity
+from database import get_db, PdfDocument, User, PaymentTransaction, log_admin_activity
 
 download_router = APIRouter(tags=["Document Download"])
 
@@ -79,14 +79,36 @@ async def download_selected_documents(
     normal_docs = [doc for doc in documents if not doc.is_important]
     has_important = len(important_docs) > 0
 
+    paid_doc_ids = set()
+    if not is_admin and important_docs:
+        important_doc_ids = [doc.id for doc in important_docs]
+        paid_rows = (
+            db.query(PaymentTransaction.document_id)
+            .filter(
+                PaymentTransaction.user_id == current_user.id,
+                PaymentTransaction.document_id.in_(important_doc_ids),
+                PaymentTransaction.provider == "kakaopay",
+                PaymentTransaction.status == "approved",
+            )
+            .all()
+        )
+        paid_doc_ids = {row[0] for row in paid_rows}
+
     print("[DEBUG] has_important:", has_important)
     print("[DEBUG] format_type:", format_type)
     print("[DEBUG] 문서 총 개수:", len(documents))
     print("[DEBUG] 중요 문서 ID 목록:", [doc.id for doc in important_docs])
+    print("[DEBUG] 결제완료 문서 ID 목록:", sorted(list(paid_doc_ids)))
 
     if format_type == "zip" or has_important:
         print("[DEBUG] ZIP 모드 진입 → generate_protected_zip_response 호출")
-        return await generate_protected_zip_response(normal_docs, important_docs, current_user.username, is_admin)
+        return await generate_protected_zip_response(
+            normal_docs,
+            important_docs,
+            current_user.username,
+            is_admin,
+            paid_doc_ids=paid_doc_ids,
+        )
     else:
         print("[DEBUG] CSV 모드 진입 → 기존 CSV 생성")
 
@@ -126,8 +148,9 @@ async def download_selected_documents(
 
 
 # 헬퍼 함수들 (summary.py에서 그대로 복사)
-async def generate_protected_zip_response(normal_docs, important_docs, username, is_admin: bool):
+async def generate_protected_zip_response(normal_docs, important_docs, username, is_admin: bool, paid_doc_ids=None):
     print("[DEBUG] generate_protected_zip_response 시작 - 관리자:", is_admin, "중요 문서:", len(important_docs))
+    paid_doc_ids = paid_doc_ids or set()
     main_zip_buffer = io.BytesIO()
     main_zip = ZipFile(main_zip_buffer, 'w', compression=ZIP_DEFLATED)
     try:
@@ -139,7 +162,7 @@ async def generate_protected_zip_response(normal_docs, important_docs, username,
             "1. 일반_문서_목록.csv 및 일반문서 폴더 → 바로 열림\n"
             "2. 중요문서 폴더 안 *_보호됨.zip\n"
             "   • 일반 사용자: 업로드 시 입력한 **4자리 숫자 비밀번호** 입력\n"
-            "   • 관리자(admin): 암호 없이 바로 열림\n\n"
+            "   • 결제 완료 사용자 또는 관리자(admin): 암호 없이 바로 열림\n\n"
             "관리자라면 모든 파일을 바로 확인 가능합니다.\n"
             "암호 입력이 안 될 경우: 7-Zip 최신 버전으로 다시 시도해 주세요."
             ).encode('utf-8')
@@ -152,9 +175,10 @@ async def generate_protected_zip_response(normal_docs, important_docs, username,
         for doc in important_docs:
             tmp_path = f"protected_{doc.id}_{int(time.time()*1000)}.zip"
             print(f"[DEBUG] 보호 ZIP 생성 - ID: {doc.id}")
-            if is_admin:
+            can_skip_password = is_admin or doc.id in paid_doc_ids
+            if can_skip_password:
                 protected_zip = ZipFile(tmp_path, 'w', compression=ZIP_DEFLATED)
-                print(f"[관리자 모드] 암호 없이 생성")
+                print(f"[무암호 모드] 암호 없이 생성 - doc_id={doc.id}")
             else:
                 if not doc.password:
                     print(f"[경고] 문서 {doc.id} 패스워드 없음 - ID로 대체")
