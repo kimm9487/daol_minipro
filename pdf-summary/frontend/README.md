@@ -1,49 +1,55 @@
 # PDF Summary Frontend
 
 React + Vite 기반 프론트엔드입니다.
-문서(PDF·HWP) 업로드·OCR·요약·번역, 대화형 질의응답, 결제 연동, 관리자 대시보드 UI를 제공합니다.
+문서 업로드/OCR/요약/번역, 대화형 질의응답, 결제 흐름, 마이페이지, 관리자 대시보드 UI를 제공합니다.
 
-## 1. 주요 기능
+## 1. 핵심 역할
 
-- 로그인 / 회원가입 / 소셜 로그인(Kakao)
-- PDF·HWP 문서 업로드, OCR 모델 선택, 요약·번역
-- 문서 기반 대화형 질의응답 (Socket.IO)
-- 마이페이지 (이력 조회, 프로필 관리)
-- 전체 요약 목록 (UserList): 결제 정책 UI 포함
-  - 공개+중요+미결제 문서에 결제 버튼 표시
-  - 결제 완료 시 배지·열람 상태 즉시 갱신
-- 관리자 대시보드 (사용자·문서·DB 상태·Chroma 상태·결제 로그·활성 세션)
-- KakaoPay 결제 팝업 콜백 처리
-- 전역 가이드 챗봇 (GuideChatbot)
+- 인증 UI: 로그인/회원가입/소셜 로그인 진입
+- 문서 UI: 업로드, OCR 선택, 요약/번역 결과 확인
+- 대화 UI: Socket.IO 기반 문서 질의응답
+- 마이페이지: 이력 조회, 프로필 수정, 회원탈퇴
+- 결제 UI: KakaoPay 팝업 콜백 및 상태 갱신
+- 관리자 UI: 사용자/문서/상태/결제 로그 모니터링
 
-## 2. 기술 스택
+## 2. 최근 반영 사항 (2026-04)
+
+### MyPage 프로필 정책 반영
+
+- 프로필 수정 모달에서 이메일 변경을 비활성화했습니다.
+- 현재 이메일은 조회 전용이며, 저장 시 이메일 필드를 전송하지 않습니다.
+
+### MyPage 회원탈퇴 UX 개선
+
+- 탈퇴 확인을 브라우저 confirm에서 전용 모달로 변경했습니다.
+- 모달에 다음 안내를 명시합니다.
+  - 탈퇴에 대한 책임 고지
+  - 탈퇴 후 계정/문서/히스토리 복구 불가
+
+## 3. 기술 스택
 
 | 패키지 | 버전 |
 | --- | --- |
 | react | ^19.2.0 |
 | react-dom | ^19.2.0 |
 | react-router-dom | ^7.13.1 |
-| socket.io-client | ^4.8.3 |
 | react-hot-toast | ^2.6.0 |
+| socket.io-client | ^4.8.3 |
 | date-fns | ^4.1.0 |
 | vite | ^7.3.1 |
 
-## 3. 폴더 구조
+## 4. 디렉토리 구조
 
 ```text
 frontend/
 ├── public/
 ├── src/
-│   ├── assets/
 │   ├── components/
 │   │   ├── Header.jsx
-│   │   ├── Header.css
-│   │   ├── WebSocketChat.jsx       # Socket.IO 채팅 컴포넌트
-│   │   ├── websocketchat/
-│   │   └── GuideChatbot/           # 전역 가이드 챗봇
-│   │       └── GuideChatbot.jsx
+│   │   ├── WebSocketChat.jsx
+│   │   └── GuideChatbot/
 │   ├── config/
-│   │   └── api.js                  # API·Socket URL 설정
+│   │   └── api.js
 │   ├── hooks/
 │   │   ├── useLogin.js
 │   │   ├── useLogout.js
@@ -54,26 +60,21 @@ frontend/
 │   │   ├── useSessionValidator.js
 │   │   └── useAuthRedirect.js
 │   ├── pages/
-│   │   ├── HomeHub/                # 홈 허브
-│   │   ├── PdfSummary/             # 문서 업로드·OCR·요약·번역
-│   │   ├── ChatSummary/            # 문서 기반 대화형 Q&A
-│   │   ├── MyPage/                 # 이력 조회·프로필 관리
-│   │   ├── UserList/               # 전체 요약 목록·결제
-│   │   ├── AdminDashboard/         # 통합 관리자 대시보드
+│   │   ├── HomeHub/
+│   │   ├── PdfSummary/
+│   │   ├── ChatSummary/
+│   │   ├── MyPage/
 │   │   │   ├── index.jsx
-│   │   │   ├── UserManagement.jsx
-│   │   │   ├── DocumentList.jsx
-│   │   │   ├── DatabaseStatus.jsx
-│   │   │   ├── ChromaStatus.jsx
-│   │   │   ├── PaymentLogList.jsx
-│   │   │   └── ActiveSessions.jsx
+│   │   │   ├── EditProfileModal.jsx
+│   │   │   └── WithdrawConfirmModal.jsx
+│   │   ├── UserList/
+│   │   ├── AdminDashboard/
 │   │   ├── Login/
 │   │   ├── Register/
 │   │   └── Payment/
-│   │       ├── KakaoSuccess.jsx    # 결제 성공 콜백
-│   │       └── KakaoFail.jsx       # 결제 실패 콜백
+│   │       ├── KakaoSuccess.jsx
+│   │       └── KakaoFail.jsx
 │   ├── App.jsx
-│   ├── App.css
 │   ├── main.jsx
 │   └── index.css
 ├── index.html
@@ -81,72 +82,78 @@ frontend/
 └── package.json
 ```
 
-## 4. 주요 라우트
+## 5. 라우트 구성
 
-| 경로 | 접근 | 페이지 |
+| Route | 접근 | 설명 |
 | --- | --- | --- |
-| /login | 공개 | Login |
-| /register | 공개 | Register |
-| /payments/kakao/success | 공개 | KakaoSuccess |
-| /payments/kakao/fail | 공개 | KakaoFail |
+| /login | 공개 | 로그인 |
+| /register | 공개 | 회원가입 |
+| /payments/kakao/success | 공개 | 결제 성공 콜백 |
+| /payments/kakao/fail | 공개 | 결제 실패 콜백 |
 | / | 보호 | HomeHub |
-| /pdf-summary | 보호 | PdfSummary |
-| /chat-summary | 보호 | ChatSummary |
-| /mypage | 보호 | MyPage |
-| /userlist | 보호 | UserList |
-| /admin | 보호 | AdminDashboard |
+| /pdf-summary | 보호 | 문서 업로드/OCR/요약/번역 |
+| /chat-summary | 보호 | 문서 기반 Q&A |
+| /mypage | 보호 | 이력/프로필/탈퇴 |
+| /userlist | 보호 | 전체 목록/결제 |
+| /admin | 보호 | 관리자 대시보드 |
 
-> 결제 콜백 라우트는 팝업에서 열리므로 세션 검증 리디렉트 대상에서 제외합니다.
+참고:
 
-## 5. API 설정
+- 결제 콜백 경로는 팝업에서 열리므로 공개 라우트로 유지합니다.
+- App에서 로그인 상태 기준으로 Header와 GuideChatbot 표시를 제어합니다.
 
-파일: `src/config/api.js`
+## 6. API/소켓 설정
 
-```js
-export const API_ORIGIN   // VITE_API_URL 또는 http://{hostname}:{VITE_API_PORT|8000}
-export const SOCKET_ORIGIN // VITE_SOCKET_URL 또는 ws://{hostname}:{VITE_SOCKET_PORT|8001}
-export const API_BASE      // {API_ORIGIN}/api
-export const buildApiUrl(path)  // {API_ORIGIN}{path}
+설정 파일: src/config/api.js
+
+```text
+API_ORIGIN     : VITE_API_URL 우선, 미설정 시 hostname + VITE_API_PORT(기본 8000)
+SOCKET_ORIGIN  : VITE_SOCKET_URL 우선, 미설정 시 ws://hostname + VITE_SOCKET_PORT(기본 8001)
+API_BASE       : {API_ORIGIN}/api
+buildApiUrl()  : 절대 API URL 생성 유틸
 ```
 
-프론트 `.env` 예시:
+예시 env:
 
 ```env
 VITE_API_URL=http://localhost:8000
 VITE_SOCKET_URL=ws://localhost:8001
 ```
 
-Docker Compose에서는 `VITE_API_URL`, `VITE_SOCKET_URL`을 컨테이너 환경 변수로 주입합니다.
-
-## 6. 실행 방법
+## 7. 실행 방법
 
 ```bash
+cd pdf-summary/frontend
 npm install
 npm run dev
 ```
 
-- 개발 서버 기본: http://localhost:5173
-
-빌드/검증:
+검증/배포용:
 
 ```bash
+npm run lint
 npm run build
 npm run preview
-npm run lint
 ```
 
-## 7. 결제 연동 흐름
+## 8. 주요 화면 흐름
 
-1. UserList에서 결제 대상 문서 클릭
-2. `POST /api/payments/kakao/ready` 호출 → `next_redirect_pc_url` 수신
-3. KakaoPay 결제창을 새 팝업으로 열기
-4. 팝업 콜백(`/payments/kakao/success|fail`)에서 `POST /api/payments/kakao/approve` 처리
-5. `window.opener.postMessage`로 부모창(UserList) 배지·열람 상태 즉시 갱신
+### 결제 흐름
 
-## 8. 개발 유의사항
+1. UserList에서 결제 대상 문서 선택
+2. POST /api/payments/kakao/ready 호출
+3. KakaoPay 팝업 오픈
+4. /payments/kakao/success 또는 /payments/kakao/fail 콜백 처리
+5. window.opener.postMessage로 부모 창 상태 동기화
 
-- 로그인 세션 검증은 `useSessionValidator` 훅에서 수행합니다.
-- 결제 콜백 페이지는 `useSessionValidator`에 의해 리디렉트되지 않도록 공개 라우트로 유지합니다.
-- 결제 정책 UI는 백엔드 응답 필드 `requires_payment`, `is_paid_by_viewer`에 의존합니다.
-- GuideChatbot은 `App.jsx`에서 전역으로 렌더링되어 모든 페이지에 표시됩니다.
-- `useRegister.js` 훅이 회원가입 폼 로직을 담당합니다.
+### MyPage 계정 흐름
+
+- 프로필 수정: 비밀번호 변경 가능, 이메일 변경 비활성
+- 회원 탈퇴: WithdrawConfirmModal 확인 후 withdraw API 호출
+
+## 9. 개발 체크포인트
+
+- 세션 검증은 useSessionValidator 훅에서 처리합니다.
+- 결제 UI는 requires_payment, is_paid_by_viewer 응답 필드에 의존합니다.
+- GuideChatbot은 App 레벨 전역 컴포넌트입니다.
+- 탈퇴 모달 도입으로 useDocumentHistory.deleteAccount는 confirm 없이 직접 API를 호출합니다.
