@@ -10,6 +10,7 @@ import Pagination from "./Pagination";
 import EditProfileModal from "./EditProfileModal";
 import DocumentDetailModal from "./DocumentDetailModal";
 import EditSummaryModal from "./EditSummaryModal";
+import WithdrawConfirmModal from "./WithdrawConfirmModal";
 
 const MyPage = () => {
   useSessionValidator();
@@ -34,6 +35,8 @@ const MyPage = () => {
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [showSummaryEditModal, setShowSummaryEditModal] = useState(false);
   const [documentToEdit, setDocumentToEdit] = useState(null);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [withdrawLoading, setWithdrawLoading] = useState(false);
 
   // ===== 페이지네이션 상태 =====
   // [2026-03-25 osj] 일괄삭제 선택 상태
@@ -113,6 +116,15 @@ const MyPage = () => {
     }
   };
 
+  const handleConfirmWithdraw = async () => {
+    setWithdrawLoading(true);
+    const success = await deleteAccount();
+    if (!success) {
+      setWithdrawLoading(false);
+      setShowWithdrawModal(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="mypage-container">
@@ -128,7 +140,7 @@ const MyPage = () => {
           userInfo={userInfo}
           historyLength={history.length}
           onEditClick={() => setShowEditModal(true)}
-          onDeleteAccount={deleteAccount}
+          onDeleteAccount={() => setShowWithdrawModal(true)}
         />
 
         <main className="history-section">
@@ -183,6 +195,17 @@ const MyPage = () => {
         }}
         document={documentToEdit}
         onSave={handleSaveSummary}
+      />
+
+      <WithdrawConfirmModal
+        show={showWithdrawModal}
+        loading={withdrawLoading}
+        onClose={() => {
+          if (!withdrawLoading) {
+            setShowWithdrawModal(false);
+          }
+        }}
+        onConfirm={handleConfirmWithdraw}
       />
     </div>
   );

@@ -225,22 +225,23 @@ export const useDocumentHistory = () => {
   };
 
   const deleteAccount = async () => {
-    if (
-      window.confirm("정말로 탈퇴하시겠습니까? 모든 히스토리가 삭제됩니다.")
-    ) {
-      try {
-        const userId = localStorage.getItem("userId");
-        const response = await fetch(buildApiUrl(`/auth/withdraw/${userId}`), {
-          method: "DELETE",
-        });
-        if (response.ok) {
-          toast.success("회원 탈퇴가 완료되었습니다.");
-          localStorage.clear();
-          window.location.href = "/";
-        } else {
-          toast.error("탈퇴 처리 중 오류가 발생했습니다.");
-        }
-      } catch (error) {}
+    try {
+      const userId = localStorage.getItem("userId");
+      const response = await fetch(buildApiUrl(`/auth/withdraw/${userId}`), {
+        method: "DELETE",
+      });
+      if (response.ok) {
+        toast.success("회원 탈퇴가 완료되었습니다.");
+        localStorage.clear();
+        window.location.href = "/";
+        return true;
+      }
+
+      toast.error("탈퇴 처리 중 오류가 발생했습니다.");
+      return false;
+    } catch (error) {
+      toast.error("탈퇴 처리 중 오류가 발생했습니다.");
+      return false;
     }
   };
 

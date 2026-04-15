@@ -381,6 +381,14 @@
   background: #2980b9;
 }
 
+.btn-confirm.btn-danger {
+  background: #e74c3c;
+}
+
+.btn-confirm.btn-danger:hover:not(:disabled) {
+  background: #c0392b;
+}
+
 .btn-cancel:disabled,
 .btn-confirm:disabled {
   opacity: 0.6;
@@ -630,4 +638,33 @@
   to {
     opacity: 1;
   }
+}
+
+.withdraw-modal {
+  max-width: 520px;
+}
+
+.withdraw-modal-title {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #2d2d2d;
+}
+
+.withdraw-warning-box {
+  border: 1px solid #f3c5c2;
+  background: #fff5f4;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.withdraw-warning-box p {
+  margin: 0;
+  color: #8b2f2a;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.withdraw-warning-box p + p {
+  margin-top: 6px;
 }
