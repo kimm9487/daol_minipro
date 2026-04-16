@@ -140,7 +140,11 @@ const MyPage = () => {
           userInfo={userInfo}
           historyLength={history.length}
           onEditClick={() => setShowEditModal(true)}
-          onDeleteAccount={() => setShowWithdrawModal(true)}
+          onDeleteAccount={() => {
+            if (userInfo.role !== "admin") {
+              setShowWithdrawModal(true);
+            }
+          }}
         />
 
         <main className="history-section">
@@ -197,16 +201,18 @@ const MyPage = () => {
         onSave={handleSaveSummary}
       />
 
-      <WithdrawConfirmModal
-        show={showWithdrawModal}
-        loading={withdrawLoading}
-        onClose={() => {
-          if (!withdrawLoading) {
-            setShowWithdrawModal(false);
-          }
-        }}
-        onConfirm={handleConfirmWithdraw}
-      />
+      {userInfo.role !== "admin" && (
+        <WithdrawConfirmModal
+          show={showWithdrawModal}
+          loading={withdrawLoading}
+          onClose={() => {
+            if (!withdrawLoading) {
+              setShowWithdrawModal(false);
+            }
+          }}
+          onConfirm={handleConfirmWithdraw}
+        />
+      )}
     </div>
   );
 };

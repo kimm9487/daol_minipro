@@ -27,9 +27,11 @@ const UserProfileCard = ({
       <button className="edit-btn" onClick={onEditClick}>
         프로필 수정
       </button>
-      <button className="delete-account-btn" onClick={onDeleteAccount}>
-        회원 탈퇴
-      </button>
+      {userInfo.role !== "admin" && (
+        <button className="delete-account-btn" onClick={onDeleteAccount}>
+          회원 탈퇴
+        </button>
+      )}
     </aside>
   );
 };
